@@ -103,3 +103,5 @@ ENV/
 input/
 preprocessing/PubMed-and-PMC-w2v.bin
 preprocessing/oov.txt
+save.m
+test_tokenizer.txt
