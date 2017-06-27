@@ -86,6 +86,7 @@ class Evaluator(object):
         results[self.name + "_time"] = float(time.time()) - float(self.start_time)
 
         if self.label2id is not None and self.conll_eval is True:
+            print(self.conll_format)
             conll_counts = conlleval.evaluate(self.conll_format)
             conll_metrics_overall, conll_metrics_by_type = conlleval.metrics(conll_counts)
             results[self.name + "_conll_accuracy"] = float(conll_counts.correct_tags) / float(
