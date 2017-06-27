@@ -2,35 +2,30 @@ from torch import nn, cuda
 from torch.autograd import Variable
 import config as cfg
 
+
 class LMnet(nn.Module):
-    def __init__(self):
+    def __init__(self, input_size, out_size, hidden_size):
         super().__init__()
-        assert self.emb_mat_tensor.size(1) == cfg.EMBEDDING_DIM
-        self.vocab_size = self.emb_mat_tensor.size(0)
-        self.emb_dim = self.emb_mat_tensor.size(1)
-        self.hidden_size = cfg.LSTM_HIDDEN_SIZE
-        self.batch_size = 1  # we can only do batch size 1.
-        self.num_layers = 1
-        self.num_dir = 2
-        self.out_size = cfg.CATEGORIES
-        self.pf_dim = cfg.PF_EMBEDDING_DIM
 
-        self.linear = nn.Linear(self.hidden_size * self.num_dir,
-                                self.out_size)
+        self.input_size = input_size
+        self.out_size = out_size
+        self.hidden_size = hidden_size
 
-        # self.time_linear = TimeDistributed(self.linear, batch_first=True)
+        self.linear1 = nn.Linear(self.input_size, self.hidden_size)
+        self.tanh = nn.Tanh()
 
-        self.hidden_state = self.init_state()
-
+        self.linear2 = nn.Linear(self.hidden_size, self.out_size)
         self.log_softmax = nn.LogSoftmax()
 
-    def forward(self, sent_idx_seq):
-        cfg.ver_print("Sent Index sequence", sent_idx_seq)
+    def forward(self, inp_features):
+        cfg.ver_print("Inp features", inp_features)
+        # inp_features is of size (seq_len x EMB_DIM)
 
-        linear_out = self.linear(lstm_out.view(seq_len, -1))
-        soft_out = self.log_softmax(linear_out)
+        linear1_out = self.linear1(inp_features)
+        tanh_out = self.tanh(linear1_out)
+        linear2_out = self.linear2(tanh_out)
+        soft_out = self.log_softmax(linear2_out)
 
-        cfg.ver_print("LINEAR OUT", linear_out)
         cfg.ver_print("FINAL OUT", soft_out)
 
         return soft_out
