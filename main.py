@@ -4,10 +4,12 @@ from decimal import Decimal
 import sys
 from torch import nn, optim, max, LongTensor, cuda, sum, transpose, torch
 from torch.autograd import Variable
+from torch.nn.utils import clip_grad_norm
 
 from corpus.Manager import Manager
 import config as cfg
 from model.SeqNet import SeqNet
+from model.utils import to_scalar
 from postprocessing.evaluator import Evaluator
 from preprocessing.text_processing import prepare_embeddings
 import numpy as np
@@ -26,30 +28,49 @@ def argmax(var):
     return preds
 
 
-def train_a_epoch(name, data, model, optimizer, criterion):
+def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, lm_b_criterion, gamma):
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=None, conll_eval=True)
 
     for sample in data:
         # zero the parameter gradients
         optimizer.zero_grad()
         model.zero_grad()
-        model.hidden_state = model.init_state()
-        out = model(Variable(cuda.LongTensor([sample.X])))
+        model.init_state()
+        print(sample.C)
+        lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])), sample.C)
 
-        cfg.ver_print("out", out[:, 1])
-        cfg.ver_print("tensor Y", Variable(cuda.FloatTensor(sample.Y)))
+        cfg.ver_print("lm_f_out", lm_f_out)
+        cfg.ver_print("lm_b_out", lm_b_out)
+        cfg.ver_print("seq_out", seq_out)
 
-        pred = argmax(out)
+        cfg.ver_print("tensor X variable", Variable(cuda.FloatTensor([sample.X])))
+
+        # remove start and stop tags
+        seq_out = seq_out[1: -1]
+        pred = argmax(seq_out)
 
         cfg.ver_print("Predicted output", pred)
 
-        loss = criterion(out, Variable(cuda.LongTensor(sample.Y)))
+        seq_loss = seq_criterion(seq_out, Variable(cuda.LongTensor(sample.Y)))
+
+        # to limit the vocab size of the sample sentence ( trick used to improve lm model)
+        lm_X = [cfg.LM_MAX_VOCAB_SIZE - 1 if (x >= cfg.LM_MAX_VOCAB_SIZE) else x for x in sample.X]
+
+        cfg.ver_print("Sample input", lm_X)
+
+        lm_f_loss = lm_f_criterion(lm_f_out.squeeze(), Variable(cuda.LongTensor(lm_X)[1:]).squeeze())
+        lm_b_loss = lm_b_criterion(lm_b_out.squeeze(), Variable(cuda.LongTensor(lm_X)[:-1]).squeeze())
+
+        total_loss = seq_loss + Variable(cuda.FloatTensor([gamma])) * (lm_f_loss + lm_b_loss)
 
         # print('loss = {0}'.format(to_scalar(loss)))
 
-        evaluator.append_data(to_scalar(loss), pred, sample.X, sample.Y)
+        evaluator.append_data(to_scalar(total_loss), pred, sample.X[1:-1], sample.Y)
 
-        loss.backward()
+        total_loss.backward()
+
+        if cfg.CLIP is not None:
+            clip_grad_norm(model.parameters(), cfg.CLIP)
         optimizer.step()
     evaluator.gen_results()
 
@@ -58,13 +79,14 @@ def train_a_epoch(name, data, model, optimizer, criterion):
 
 def build_model(train_data, dev_data, embedding_matrix):
     # init model
-    model = SeqNet(embedding_matrix)
+    model = SeqNet(embedding_matrix, False)
 
     # Turn on cuda
     model = model.cuda()
 
     # verify model
     print(model)
+    # print(list(model.parameters()))
 
     # init gradient descent optimizer
     optimizer = optim.Adadelta(model.parameters(), lr=cfg.LEARNING_RATE)
@@ -73,7 +95,9 @@ def build_model(train_data, dev_data, embedding_matrix):
     model.zero_grad()
 
     # init loss criteria
-    criterion = nn.NLLLoss()
+    seq_criterion = nn.NLLLoss()
+    lm_f_criterion = nn.NLLLoss()
+    lm_b_criterion = nn.NLLLoss()
     best_res_val = 0.0
     best_epoch = 0
     for epoch in range(cfg.MAX_EPOCH):
@@ -83,11 +107,11 @@ def build_model(train_data, dev_data, embedding_matrix):
 
         random.seed(epoch)
         data_copy = list(train_data)
-        random.shuffle(data_copy)
+        if cfg.RANDOM_TRAIN:
+            random.shuffle(data_copy)
 
-        print(train_data)
-        print(data_copy)
-        train_eval, model = train_a_epoch("train", data_copy, model, optimizer, criterion)
+        train_eval, model = train_a_epoch("train", data_copy, model, optimizer, seq_criterion,
+                                          lm_f_criterion, lm_b_criterion, cfg.LM_GAMMA)
         train_eval.print_results()
 
         dev_eval = test("dev", dev_data, model)
@@ -119,11 +143,15 @@ def test(name, data, model):
     true_list = []
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=None, conll_eval=True)
     for sample in data:
-        outputs = model(Variable(cuda.LongTensor([sample.X])))
-        _, predicted = max(outputs.data, 1)
+        lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])), sample.C)
 
-        pred = argmax(outputs)
-        evaluator.append_data(0, pred, sample.X, sample.Y)
+        # remove start and stop tags
+        seq_out = seq_out[1:-1]
+
+        _, predicted = max(seq_out.data, 1)
+
+        pred = argmax(seq_out)
+        evaluator.append_data(0, pred, sample.X[1:-1], sample.Y)
 
         predicted = transpose(predicted, 0, 1)
         predicted = predicted.view(predicted.size(1))
@@ -134,6 +162,7 @@ def test(name, data, model):
         true_list.append(np.array(sample.Y))
 
     evaluator.gen_results()
+    evaluator.print_results()
 
     return evaluator
 
@@ -170,9 +199,10 @@ def fscore(pred, true):
 if __name__ == '__main__':
     corpus = Manager(cfg.ARTICLES_FOLDERPATH, cfg.COMMON_FOLDERPATH)
     print("Preparing Embedding Matrix ...")
-    embedding_matrix, word_index = prepare_embeddings()
+    embedding_matrix, word_index, char_index = prepare_embeddings(replace_digit=cfg.REPLACE_DIGITS)
     print("Loading Data ...")
-    corpus.gen_data(cfg.TRAIN_PERCENT, cfg.DEV_PERCENT, cfg.TEST_PERCENT, word_index)
+    corpus.gen_data(cfg.TRAIN_PERCENT, cfg.DEV_PERCENT, cfg.TEST_PERCENT,
+                    word_index, char_index, replace_digit=cfg.REPLACE_DIGITS, to_filter=cfg.FILTER_ALL_NEG)
 
     print("Training ...")
     the_model = build_model(corpus.train, corpus.dev,  embedding_matrix)
