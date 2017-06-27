@@ -1,7 +1,9 @@
 import glob
 import os
+import random
 from collections import namedtuple
 
+import re
 from keras.preprocessing.sequence import pad_sequences
 from keras.preprocessing.text import Tokenizer
 from keras.utils import to_categorical
@@ -15,7 +17,7 @@ from builtins import any as b_any
 # TODO fix corpus folder's structure and then improve this class
 from corpus.TextFile import TextFile
 
-Dataset = namedtuple('Dataset', ['X', 'Y'])
+Dataset = namedtuple('Dataset', ['X', 'C', 'Y'])
 
 
 class Manager(object):
@@ -23,10 +25,9 @@ class Manager(object):
 
         self.corpus_path = corpus_path
         self.common_path = common_path
-        self.train = [Dataset(None, None)]
-        self.dev = [Dataset(None, None)]
-        self.test = [Dataset(None, None)]
-
+        self.train = [Dataset(None, None, None)]
+        self.dev = [Dataset(None, None, None)]
+        self.test = [Dataset(None, None, None)]
 
     def load_protofiles(self, end_at=5):
         filenames = []
@@ -37,18 +38,36 @@ class Manager(object):
 
         return protofiles
 
-    def gen_data(self, per_train, per_dev, per_test, word_index):
+    def gen_data(self, per_train, per_dev, per_test, word_index, char_index, replace_digit=True, to_filter=True):
 
         articles = self.load_protofiles()
 
         # get list of list of words
         sents, labels = self.load_sents_and_labels(articles, with_bio=True)
 
-        # filter, such that only sentences that have atleast one action-verb will be taken into consideration
-        sents, labels = self.filter(sents, labels)
+        cfg.ver_print("sents", sents)
+        cfg.ver_print("labels", labels)
 
+        # filter, such that only sentences that have atleast one action-verb will be taken into consideration
+        if to_filter:
+            sents, labels = self.filter(sents, labels)
+
+        if replace_digit:
+            sents = self.replace_num(sents)
+
+        cfg.ver_print("char_index", char_index)
+        char_idx_seq = [self.to_idx_seq([[cfg.SENT_START]], start=cfg.WORD_START, end=cfg.WORD_END, index=char_index) +
+                        self.to_idx_seq([list(word) for word in sent], start=cfg.WORD_START, end=cfg.WORD_END, index=char_index) +
+                        self.to_idx_seq([[cfg.SENT_END]], start=cfg.WORD_START, end=cfg.WORD_END, index=char_index)
+                        for sent in sents]
+
+        cfg.ver_print("char idx seq", char_idx_seq)
         # convert list of list of words to list of list of word_indices
-        sent_idx_seq = self.to_idx_seq(sents, word_index)
+
+        cfg.ver_print("word_index", word_index)
+        sent_idx_seq = self.to_idx_seq(sents, start=cfg.SENT_START, end=cfg.SENT_END, index=word_index)
+        cfg.ver_print("sent", sents)
+        cfg.ver_print("sent idx seq", sent_idx_seq)
 
         labels = self.to_categorical(labels, bio=True)
 
@@ -57,28 +76,45 @@ class Manager(object):
         np.set_printoptions(precision=3, threshold=np.nan)
 
         total = len(sent_idx_seq)
+        print(total)
 
-        ntrain = int((per_train * total)/100.0)
-        ndev = int((per_dev * total)/100.0)
+        ntrain = int((per_train * total) / 100.0)
+        ndev = int((per_dev * total) / 100.0)
         ntest = total - ntrain - ndev
 
+        print(ntrain, ndev, ntest)
+
         x_train = sent_idx_seq[:ntrain]
+        c_train = char_idx_seq[:ntrain]
         y_train = labels[:ntrain]
-        x_dev = sent_idx_seq[ntrain+1:ntrain+ndev+1]
-        y_dev = labels[ntrain+1:ntrain+ndev+1]
+        x_dev = sent_idx_seq[ntrain + 1:ntrain + ndev + 1]
+        c_dev = char_idx_seq[ntrain + 1:ntrain + ndev + 1]
+        y_dev = labels[ntrain + 1:ntrain + ndev + 1]
         x_test = sent_idx_seq[-ntest:]
+        c_test = char_idx_seq[-ntest:]
         y_test = labels[-ntest:]
 
         assert len(x_train) + len(x_dev) + len(x_test) == total
 
-        self.train = [Dataset(x, y) for x, y in zip(x_train, y_train)]
-        self.dev = [Dataset(x, y) for x, y in zip(x_dev, y_dev)]
-        self.test = [Dataset(x, y) for x, y in zip(x_test, y_test)]
+        self.train = [Dataset(x, c, y) for x, c, y in zip(x_train, c_train, y_train)]
+        self.dev = [Dataset(x, c, y) for x, c, y in zip(x_dev, c_dev, y_dev)]
+        self.test = [Dataset(x, c, y) for x, c, y in zip(x_test, c_test, y_test)]
+
+    def replace_num(self, sents):
+        new_sents = []
+        for sent in sents:
+            new_sent = []
+            for word in sent:
+                word = re.sub(r'\d', '0', word)
+                new_sent.append(word)
+
+            new_sents.append(new_sent)
+        return new_sents
 
     # using a word_index dictionary, converts words to their respective index.
     # sents has to be a list of list of words.
-
-    def filter(self, sents, labels):
+    @staticmethod
+    def filter(sents, labels):
         s = []
         l = []
         for sent, label in zip(sents, labels):
@@ -93,16 +129,16 @@ class Manager(object):
         return s, l
 
     @staticmethod
-    def to_idx_seq(sents, word_index):
-        sents_idx_seq = []
-        cfg.ver_print("word_index", word_index)
-        for sent in sents:
-            sent_idx_seq = []
-            for word in sent:
-                sent_idx_seq.append(word_index[word.lower()])
-            sents_idx_seq.append(sent_idx_seq)
+    def to_idx_seq(list2d, start, end, index):
+        idx_seq = []
+        for row in list2d:
+            row_idx_seq = [index[start]]
+            for item in row:
+                row_idx_seq.append(index[item.lower()])
+            row_idx_seq.append(index[end])
+            idx_seq.append(row_idx_seq)
 
-        return sents_idx_seq
+        return idx_seq
 
     @staticmethod
     def morph_labels(labels_asarray):
@@ -160,7 +196,7 @@ class Manager(object):
         return y_train
 
     @staticmethod
-    def load_sents_and_labels(articles, with_bio=False):
+    def load_sents_and_labels(articles, with_bio=False, shuffle_once=True):
         sents = []
         labels = []
         for article in articles:
@@ -169,7 +205,12 @@ class Manager(object):
                 words, tags = article.extract_data_per_sent(with_bio)
                 sents.extend(words)
                 labels.extend(tags)
-
+        if shuffle_once:
+            samples = list(zip(sents, labels))
+            print(samples)
+            random.shuffle(samples)
+            print(samples)
+            sents, labels = zip(*samples)
         return sents, labels
 
     @staticmethod
