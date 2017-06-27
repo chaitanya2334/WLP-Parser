@@ -25,13 +25,13 @@ PF_EMBEDDING_DIM = 5
 
 NUMBER_OF_VALIDATION_SAMPLES = 200
 
-LEARNING_RATE = 0.03
+LEARNING_RATE = 0.3
 
 LSTM_HIDDEN_SIZE = 200
 
 MAX_EPOCH = 100
 
-VERBOSE = True
+VERBOSE = False
 
 BATCH_SIZE = 1
 
@@ -44,6 +44,8 @@ OOV_FILEPATH = os.path.join(CURRENT_DIR, "preprocessing/oov.txt")
 
 MODEL_SAVE_FILEPATH = os.path.join(CURRENT_DIR, "save.m")
 
+FILTER_ALL_NEG = True
+
 MAX_EPOCH_IMP = 20
 
 TRAIN_PERCENT = 60
@@ -52,7 +54,38 @@ DEV_PERCENT = 20
 
 TEST_PERCENT = 20
 
+LM_HIDDEN_SIZE = 50
+
+LM_MAX_VOCAB_SIZE = 7500
+
+LM_GAMMA = 0.1
+
+REPLACE_DIGITS = True
+
+NUM_TO_D = True
+
+PUBMED_VOCAB_FILE = os.path.join(CURRENT_DIR, "preprocessing/pubmed_vocab.txt")
+
+CHAR_EMB_DIM = 50
+
+CHAR_RECURRENT_SIZE = 200
+
+CHAR_VOCAB = 0
+CHAR_LEVEL = "Input"
+
+WORD_START = "<w>"
+WORD_END = "</w>"
+SENT_START = "<s>"
+SENT_END = "</s>"
+
+UNK = "<unk>"
+
+RANDOM_TRAIN = False
+
+CLIP = 20
+
 BEST_MODEL_SELECTOR = "dev_conll_f"
+
 def ver_print(string, value):
     if VERBOSE:
         print(string + ':\n {0}'.format(value))
