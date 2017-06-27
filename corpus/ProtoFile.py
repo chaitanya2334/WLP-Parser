@@ -230,6 +230,7 @@ class ProtoFile(TextFile):
         #              [Tag(), Tag(), Tag(), Tag(), Tag()]])
 
         start = len(self.text[0])
+        end = start
         # words = self.text[1].split()
         sents = self.sents
         sent_tags = []
@@ -238,7 +239,8 @@ class ProtoFile(TextFile):
             word_tag = []
             tags_name_only = []
             for word in words:
-                start = self.full_text.find(word, start + 1)
+
+                start = self.full_text.find(word, end + 1)
                 end = start + len(word)
                 tag = self.get_tag(word, start, end)
                 if with_bio:
