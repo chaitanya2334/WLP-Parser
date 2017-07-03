@@ -1,4 +1,6 @@
 import numpy as np
+import pickle
+import os
 
 
 def generate_pf_mat(n):
@@ -14,3 +16,14 @@ def generate_pf_mat(n):
     return pf_mat
 
 
+def quicksave(items, file):
+    pickle.dump(items, open(file, "wb"))
+
+
+def quickload(file):
+    return pickle.load(open(file, "rb"))
+
+
+def touch(fname, times=None):
+    with open(fname, 'w'):
+        os.utime(fname, times)
