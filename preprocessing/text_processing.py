@@ -38,10 +38,10 @@ def gen_list2id_dict(list_, min_freq=-1, insert_words=None, lowercase=False, rep
 
 
 def prepare_embeddings(use_norm=False, replace_digit=True, load_bin=True, support_start_stop=True):
-    corpus = Manager(corpus_path=cfg.CORPUS_FOLDERPATH, common_path=cfg.COMMON_FOLDERPATH)
+    corpus = Manager()
 
     # get all the sentences each sentence is a sequence of words (list of words)
-    sent_iter = corpus.load_tokenized_sents(corpus.load_textfiles())
+    sent_iter = corpus.load_tokenized_sents(corpus.load_textfiles(cfg.ARTICLES_FOLDERPATH))
 
     if replace_digit:
         sent_iter = corpus.replace_num(sent_iter)
@@ -53,8 +53,6 @@ def prepare_embeddings(use_norm=False, replace_digit=True, load_bin=True, suppor
         skip_gram_model = KeyedVectors.load_word2vec_format(cfg.PUBMED_AND_PMC_W2V_BIN, binary=True)
     else:
         skip_gram_model = Word2Vec(sentences=sent_iter, size=cfg.EMBEDDING_DIM, sg=1, window=10, min_count=1, workers=4)
-
-    texts = corpus.load_sents(corpus.load_textfiles())
 
     cfg.ver_print("word2vec emb size", skip_gram_model.vector_size)
     # TODO fix tokenizer. Incorrect values.
