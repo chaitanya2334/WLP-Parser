@@ -2,6 +2,7 @@ from enum import Enum
 
 import logging
 
+import io
 import nltk
 from nltk import sent_tokenize
 import re
@@ -22,7 +23,7 @@ class TextFile(object):
     def __init__(self, filename):
 
         self.txt_fname = filename + '.txt'
-        with open(self.txt_fname, 'r', encoding='utf-8') as t_f:
+        with io.open(self.txt_fname, 'r', encoding='utf-8', newline='') as t_f:
             self.text = t_f.readlines()
             self.type = self.get_text_type()
 
