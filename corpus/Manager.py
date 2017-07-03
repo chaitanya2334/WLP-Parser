@@ -2,6 +2,7 @@ import glob
 import os
 import random
 from collections import namedtuple
+import pickle
 
 import re
 from keras.preprocessing.sequence import pad_sequences
@@ -17,59 +18,72 @@ from builtins import any as b_any
 # TODO fix corpus folder's structure and then improve this class
 from corpus.TextFile import TextFile
 
-Dataset = namedtuple('Dataset', ['X', 'C', 'Y'])
+Dataset = namedtuple('Dataset', ['X', 'C', 'Y', 'P'])
 
 
 class Manager(object):
-    def __init__(self, corpus_path, common_path):
+    def __init__(self, word_index=None, char_index=None, load_file=None, save_file=None):
 
-        self.corpus_path = corpus_path
-        self.common_path = common_path
-        self.train = [Dataset(None, None, None)]
-        self.dev = [Dataset(None, None, None)]
-        self.test = [Dataset(None, None, None)]
+        self.load_file = load_file
+        self.save_file = save_file
+        self.word_index = word_index
+        self.char_index = char_index
+        self.train = [Dataset(None, None, None, None)]
+        self.dev = [Dataset(None, None, None, None)]
+        self.test = [Dataset(None, None, None, None)]
 
-    def load_protofiles(self, end_at=5):
-        filenames = []
-        for i in range(end_at):
-            filenames.extend(self.__from_corpus(sub_folder='iteration_' + str(i), extension='ann'))
+    def load_filenames(self, dir_path):
+        filenames = self.__from_dir(dir_path, extension="ann")
+        return filenames
+
+    def load_protofiles(self, dir_path=None, filenames=None):
+        if dir_path is None and filenames is None:
+            raise ValueError("Both dir path and filenames are None")
+
+        if dir_path and filenames is None:
+            filenames = self.__from_dir(dir_path, extension="ann")
+            print(len(filenames))
 
         protofiles = [ProtoFile(filename) for filename in filenames]
 
         return protofiles
 
-    def gen_data(self, per_train, per_dev, per_test, word_index, char_index, replace_digit=True, to_filter=True):
+    def __gen_data(self, per_train, per_dev, per_test, replace_digit, to_filter):
 
-        articles = self.load_protofiles()
+        articles = self.load_protofiles(cfg.ARTICLES_FOLDERPATH)
 
         # get list of list of words
-        sents, labels = self.load_sents_and_labels(articles, with_bio=True)
+        sents, labels, pno = self.__load_sents_and_labels(articles, with_bio=True)
 
         cfg.ver_print("sents", sents)
         cfg.ver_print("labels", labels)
 
+        print(len(sents))
         # filter, such that only sentences that have atleast one action-verb will be taken into consideration
         if to_filter:
-            sents, labels = self.filter(sents, labels)
+            sents, labels, pno = self.__filter(sents, labels, pno)
 
+        print(len(sents))
         if replace_digit:
             sents = self.replace_num(sents)
 
-        cfg.ver_print("char_index", char_index)
-        char_idx_seq = [self.to_idx_seq([[cfg.SENT_START]], start=cfg.WORD_START, end=cfg.WORD_END, index=char_index) +
-                        self.to_idx_seq([list(word) for word in sent], start=cfg.WORD_START, end=cfg.WORD_END, index=char_index) +
-                        self.to_idx_seq([[cfg.SENT_END]], start=cfg.WORD_START, end=cfg.WORD_END, index=char_index)
-                        for sent in sents]
+        cfg.ver_print("char_index", self.char_index)
+        char_idx_seq = [
+            self.__to_idx_seq([[cfg.SENT_START]], start=cfg.WORD_START, end=cfg.WORD_END, index=self.char_index) +
+            self.__to_idx_seq([list(word) for word in sent], start=cfg.WORD_START, end=cfg.WORD_END,
+                              index=self.char_index) +
+            self.__to_idx_seq([[cfg.SENT_END]], start=cfg.WORD_START, end=cfg.WORD_END, index=self.char_index)
+            for sent in sents]
 
         cfg.ver_print("char idx seq", char_idx_seq)
         # convert list of list of words to list of list of word_indices
 
-        cfg.ver_print("word_index", word_index)
-        sent_idx_seq = self.to_idx_seq(sents, start=cfg.SENT_START, end=cfg.SENT_END, index=word_index)
+        cfg.ver_print("word_index", self.word_index)
+        sent_idx_seq = self.__to_idx_seq(sents, start=cfg.SENT_START, end=cfg.SENT_END, index=self.word_index)
         cfg.ver_print("sent", sents)
         cfg.ver_print("sent idx seq", sent_idx_seq)
 
-        labels = self.to_categorical(labels, bio=True)
+        labels = self.__to_categorical(labels, bio=True)
 
         labels = np.array(labels)
 
@@ -84,23 +98,53 @@ class Manager(object):
 
         print(ntrain, ndev, ntest)
 
-        x_train = sent_idx_seq[:ntrain]
-        c_train = char_idx_seq[:ntrain]
-        y_train = labels[:ntrain]
-        x_dev = sent_idx_seq[ntrain + 1:ntrain + ndev + 1]
-        c_dev = char_idx_seq[ntrain + 1:ntrain + ndev + 1]
-        y_dev = labels[ntrain + 1:ntrain + ndev + 1]
-        x_test = sent_idx_seq[-ntest:]
-        c_test = char_idx_seq[-ntest:]
-        y_test = labels[-ntest:]
+        x_train, x_dev, x_test = self.split(sent_idx_seq, [per_train, per_dev, per_test])
+        c_train, c_dev, c_test = self.split(char_idx_seq, [per_train, per_dev, per_test])
+        y_train, y_dev, y_test = self.split(labels, [per_train, per_dev, per_test])
+        p_train, p_dev, p_test = self.split(pno, [per_train, per_dev, per_test])
 
         assert len(x_train) + len(x_dev) + len(x_test) == total
 
-        self.train = [Dataset(x, c, y) for x, c, y in zip(x_train, c_train, y_train)]
-        self.dev = [Dataset(x, c, y) for x, c, y in zip(x_dev, c_dev, y_dev)]
-        self.test = [Dataset(x, c, y) for x, c, y in zip(x_test, c_test, y_test)]
+        print("nTrain={0}, nDev={1}, nTest={2}".format(len(x_train), len(x_dev), len(x_test)))
 
-    def replace_num(self, sents):
+        train = [Dataset(x, c, y, p) for x, c, y, p in zip(x_train, c_train, y_train, p_train)]
+        dev = [Dataset(x, c, y, p) for x, c, y, p in zip(x_dev, c_dev, y_dev, p_dev)]
+        test = [Dataset(x, c, y, p) for x, c, y, p in zip(x_test, c_test, y_test, p_test)]
+
+        return train, dev, test
+
+    @staticmethod
+    def split(seq, per):
+        assert sum(per) == 100
+        prv = 0
+        size = len(seq)
+        res = ()
+        cum_percentage = 0
+        for p in per:
+            cum_percentage += p
+            nxt = int((cum_percentage/100) * size)
+            res = res + (seq[prv:nxt],)
+            prv = nxt
+
+        return res
+
+    def to_words(self, idx_seq):
+        id2word = {v: k for k, v in self.word_index.items()}
+        return [id2word[idx] for idx in idx_seq]
+
+    def gen_data(self, per_train, per_dev, per_test, replace_digit=True, to_filter=True):
+
+        if self.load_file:
+            self.train, self.dev, self.test, self.word_index, self.char_index = pickle.load(open(self.load_file, "rb"))
+        else:
+            self.train, self.dev, self.test = self.__gen_data(per_train, per_dev, per_test,
+                                                              replace_digit, to_filter)
+
+        if self.save_file:
+            pickle.dump((self.train, self.dev, self.test, self.word_index, self.char_index), open(self.save_file, "wb"))
+
+    @staticmethod
+    def replace_num(sents):
         new_sents = []
         for sent in sents:
             new_sent = []
@@ -114,10 +158,11 @@ class Manager(object):
     # using a word_index dictionary, converts words to their respective index.
     # sents has to be a list of list of words.
     @staticmethod
-    def filter(sents, labels):
+    def __filter(sents, labels, pno):
         s = []
         l = []
-        for sent, label in zip(sents, labels):
+        p = []
+        for sent, label, single_p in zip(sents, labels, pno):
             # here sent is a sentence of word sequences, and label is a sequence of labels for a sentence.
 
             # check if any of the labels in this sentence have POSITIVE_LABEL in them, if they do, then consider that
@@ -125,11 +170,12 @@ class Manager(object):
             if b_any(cfg.POSITIVE_LABEL in x for x in label):
                 s.append(sent)
                 l.append(label)
+                p.append(single_p)
 
-        return s, l
+        return s, l, p
 
     @staticmethod
-    def to_idx_seq(list2d, start, end, index):
+    def __to_idx_seq(list2d, start, end, index):
         idx_seq = []
         for row in list2d:
             row_idx_seq = [index[start]]
@@ -141,33 +187,7 @@ class Manager(object):
         return idx_seq
 
     @staticmethod
-    def morph_labels(labels_asarray):
-        labels = labels_asarray.tolist()
-        new_labels = []
-        for sent in labels:
-            new_sent = []
-            for word in sent:
-                if word == 0:
-                    new_sent.append([0, 1])
-                elif word == 1:
-                    new_sent.append([1, 0])
-                else:
-                    new_sent.append([0, 0])
-            new_labels.append(new_sent)
-
-        return np.array(new_labels)
-
-    def create_pf(self, sequences):
-        pf_mat_seq = []
-        for sent in sequences:
-            pf_mat = generate_pf_mat(len(sent))
-            pf_mat_seq.append(pf_mat)
-
-        pf_mat_seq = np.array(pf_mat_seq)
-        return pf_mat_seq
-
-    @staticmethod
-    def to_categorical(labels, bio=False):
+    def __to_categorical(labels, bio=False):
         tag_idx = {'B': 0, 'I': 1, 'O': 2}
 
         # converts a list of list of labels to binary representation. a label is 1 if its an action-verb, else its 0
@@ -196,35 +216,30 @@ class Manager(object):
         return y_train
 
     @staticmethod
-    def load_sents_and_labels(articles, with_bio=False, shuffle_once=True):
+    def __load_sents_and_labels(articles, with_bio=False, shuffle_once=True):
         sents = []
         labels = []
+        pno = []
         for article in articles:
             assert isinstance(article, ProtoFile)
-            if article.type != article.Status.EMPTY:
+            if article.status:
                 words, tags = article.extract_data_per_sent(with_bio)
                 sents.extend(words)
                 labels.extend(tags)
+                pno.extend([article.basename]*len(words))
+                assert len(pno) == len(sents)
         if shuffle_once:
-            samples = list(zip(sents, labels))
-            print(samples)
+            samples = list(zip(sents, labels, pno))
+            cfg.ver_print("samples before shuffle", samples)
             random.shuffle(samples)
-            print(samples)
-            sents, labels = zip(*samples)
-        return sents, labels
+            cfg.ver_print("samples after shuffle", samples)
+            sents, labels, pno = zip(*samples)
+            cfg.ver_print("sents after unzipping", sents)
+            cfg.ver_print("labels after unzipping", labels)
+        return sents, labels, pno
 
-    @staticmethod
-    def load_labels(articles):
-        labels = []
-        for article in articles:
-            assert isinstance(article, ProtoFile)
-            if article.type != article.Status.EMPTY:
-                labels.extend(article.extract_tags_per_sent())
-
-        return labels
-
-    def load_textfiles(self):
-        return [TextFile(filename) for filename in self.__from_common('txt')]
+    def load_textfiles(self, folder):
+        return [TextFile(filename) for filename in self.__from_dir(folder, "txt")]
 
     @staticmethod
     def load_tokenized_sents(articles, to_lowercase=True):
@@ -239,36 +254,6 @@ class Manager(object):
         return ret
 
     @staticmethod
-    def load_sents(articles):
-        sents = []
-        for article in articles:
-            assert isinstance(article, TextFile)
-            if article.type != article.Status.EMPTY:
-                for sent in article.get_sents():
-                    if sent:
-                        sents.append(sent)
-
-        return sents
-
-    def __from_common(self, extension):
-        g = glob.iglob(self.common_path + '/*.' + extension, recursive=True)
+    def __from_dir(folder, extension):
+        g = glob.iglob(folder + '/*.' + extension, recursive=True)
         return [os.path.splitext(f)[0] for f in g]
-
-    def __from_corpus(self, sub_folder, extension):
-        g = glob.iglob(self.corpus_path + '/' + sub_folder + '/*.' + extension, recursive=True)
-        return [os.path.splitext(f)[0] for f in g]
-
-
-if __name__ == '__main__':
-    def flatten_and_collect(list2d):
-        flat = list(itertools.chain.from_iterable(list2d))
-        return set(flat)
-
-
-    corpus = Manager(cfg.ARTICLES_FOLDERPATH, cfg.COMMON_FOLDERPATH)
-
-    sents = corpus.load_tokenized_sents(corpus.load_textfiles())
-    print(sents)
-    list1d = flatten_and_collect(sents)
-    with open('test_tokenizer.txt', 'w', encoding='utf-8') as out:
-        out.writelines([item + '\n' for item in list1d])
