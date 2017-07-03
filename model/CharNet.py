@@ -34,11 +34,11 @@ class CharNet(nn.Module):
             out = self.emb(Variable(cuda.LongTensor(word)))
             out = unsqueeze(out, dim=0)
 
-            out, self.hidden_state = self.rnn(out, self.hidden_state)
+            out, hidden_state = self.rnn(out, self.hidden_state)
 
             # TODO verify that this is indeed the last outputs of both forward rnn and backward rnn
             # and that we are concatenating correctly
-            out = cat([self.hidden_state[0], self.hidden_state[1]], dim=1)
+            out = cat([hidden_state[0], hidden_state[1]], dim=1)
             cfg.ver_print("Hidden state concat", out)
             out = self.linear(out)
             out = self.tanh(out)

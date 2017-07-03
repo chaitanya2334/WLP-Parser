@@ -83,14 +83,14 @@ class SeqNet(nn.Module):
         # emb is now of size(1 x seq_len x EMB_DIM)
         cfg.ver_print("Embedding for the Sequence", inp)
 
-        lstm_out, self.hidden_state = self.lstm(inp, self.hidden_state)
+        lstm_out, hidden_state = self.lstm(inp, self.hidden_state)
         # lstm_out is of size (1 x seq_len x 2*EMB_DIM)
 
         lstm_forward, lstm_backward = lstm_out[:, :, :cfg.LSTM_HIDDEN_SIZE], lstm_out[:, :, -cfg.LSTM_HIDDEN_SIZE:]
 
         # making sure that you got the correct lstm_forward and lstm_backward.
-        assert to_scalar(torch.sum(lstm_forward[:, seq_len - 1, :] - self.hidden_state[0][0, :, :])) == 0
-        assert to_scalar(torch.sum(lstm_backward[:, 0, :] - self.hidden_state[0][1, :, :])) == 0
+        assert to_scalar(torch.sum(lstm_forward[:, seq_len - 1, :] - hidden_state[0][0, :, :])) == 0
+        assert to_scalar(torch.sum(lstm_backward[:, 0, :] - hidden_state[0][1, :, :])) == 0
 
         lm_f_out = self.lm_forward(lstm_forward[:, :-1, :])  # verify this
 
