@@ -10,12 +10,8 @@ CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 #   John/PER Doe/PER did something yesterday. Then he did something else.
 #   Washington/LOC D.C./LOC is the capital of the U.S.
 #   ....
-ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "input/Chaitanya")
+ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "simple_input")
 
-CORPUS_FOLDERPATH = os.path.join(CURRENT_DIR, "input")
-
-# Access to all protocols (unannotated)
-COMMON_FOLDERPATH = os.path.join(CURRENT_DIR, "input/Common")
 
 PUBMED_AND_PMC_W2V_BIN = os.path.join(CURRENT_DIR, "preprocessing/PubMed-and-PMC-w2v.bin")
 
@@ -35,7 +31,7 @@ VERBOSE = False
 
 BATCH_SIZE = 1
 
-POSITIVE_LABEL = 'Action-Verb'
+POSITIVE_LABEL = 'Action'
 NEG_LABEL = 'O'
 
 CATEGORIES = 3
@@ -71,7 +67,7 @@ CHAR_EMB_DIM = 50
 CHAR_RECURRENT_SIZE = 200
 
 CHAR_VOCAB = 0
-CHAR_LEVEL = "Input"
+CHAR_LEVEL = None
 
 WORD_START = "<w>"
 WORD_END = "</w>"
@@ -82,9 +78,37 @@ UNK = "<unk>"
 
 RANDOM_TRAIN = False
 
+DATASET_PICKLE = os.path.join(CURRENT_DIR, "preprocessing/dataset/dataset_save.p")
+
+PRED_BRAT_FULL = "brat_results/pred/brat_out"
+TRUE_BRAT_FULL = "brat_results/true/brat_out"
+
+PRED_BRAT_INC = "brat_results/pred/brat_inc_out"
+TRUE_BRAT_INC = "brat_results/true/brat_inc_out"
+
 CLIP = 20
 
 BEST_MODEL_SELECTOR = "dev_conll_f"
+
+RESULT_FILE = os.path.join(CURRENT_DIR, "test_results.txt")
+
+FULL_DB_FILE = os.path.join(CURRENT_DIR, "dataset.p")
+
+# Number of windows to use during training (offset is COUNT_WINDOWS_TEST, i.e. test windows will
+# be loaded first)
+COUNT_WINDOWS_TRAIN = 10000
+
+# Number of windows to use during testing
+COUNT_WINDOWS_TEST = 0
+
+# Label for any word that has no named entity label
+NO_NE_LABEL = "O"
+
+# labels to accept when parsing data, all other labels will be treated as normal text
+# e.g. in "Manhatten/NY" the "NY" will not be treated as a label and the full token
+# "Manhatten/NY" will be loaded as one word
+LABELS = ["Action", "Reagent", "Location", "Device", "Mention", "Method", "Seal", "Modifier", "Numerical", "Measure-Type",
+          "Unit", "Quantity", "Concentration", "Time", "Tool", "Temperature", "Rpm"]
 
 def ver_print(string, value):
     if VERBOSE:
