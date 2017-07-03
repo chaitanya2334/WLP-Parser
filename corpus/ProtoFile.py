@@ -1,12 +1,13 @@
 # TODO Do a code review
-
-from collections import namedtuple
+import os
+from collections import namedtuple, Counter
 
 import nltk
 from nltk.tokenize import sent_tokenize
+import config as cfg
 
 import re
-
+import io
 import logging
 
 from corpus.TextFile import TextFile
@@ -16,13 +17,19 @@ Link = namedtuple("Link", "l_id, l_name, arg1, arg2")
 
 
 class ProtoFile(TextFile):
-    def __init__(self, filename):
+    def __init__(self, filename, bio_encoding=True):
         super().__init__(filename)
         self.filename = filename
+        self.basename = os.path.basename(filename)
+        self.protocol_name = self.basename
         self.text_file = self.filename + '.txt'
         self.ann_file = self.filename + '.ann'
-        with open(self.text_file, 'r', encoding='utf-8') as t_f, open(self.ann_file, 'r', encoding='utf-8') as a_f:
+
+        with io.open(self.text_file, 'r', encoding='utf-8', newline='') as t_f, io.open(self.ann_file, 'r',
+                                                                                        encoding='utf-8',
+                                                                                        newline='') as a_f:
             self.text = t_f.readlines()
+            print(self.text)
             self.full_text = "".join(self.text)
             self.ann = a_f.readlines()
             self.status = self.__pretest()
@@ -32,10 +39,12 @@ class ProtoFile(TextFile):
             self.unique_tags = set([tag.tag_name for tag in self.tags])
 
             self.sents = self.get_sents()
+            self.nsents = len(self.sents)
             self.__std_index()
             self.__parse_links()
             self.tag_0_id = 'T0'
             self.tag_0_name = 'O'
+            self.word_tag_per_sent, self.tokens, self.words, self.token_sents = self.populate_tokens(bio_encoding)
 
     def cnt_sent(self):
         if len(self.text) == 2:
@@ -230,19 +239,24 @@ class ProtoFile(TextFile):
         #              [Tag(), Tag(), Tag(), Tag(), Tag()]])
 
         start = len(self.text[0])
+        print(start)
         end = start
         # words = self.text[1].split()
         sents = self.sents
         sent_tags = []
+        print(self.full_text)
         for sent in sents:
+            print(sent)
+
             words = self._word_tokenizer(sent, to_lowercase=False)
             word_tag = []
             tags_name_only = []
             for word in words:
 
-                start = self.full_text.find(word, end + 1)
+                start = self.full_text.find(word, end)
                 end = start + len(word)
                 tag = self.get_tag(word, start, end)
+                print(tag)
                 if with_bio:
                     tag_name = tag.tag_name_bio + tag.tag_name
 
@@ -271,6 +285,7 @@ class ProtoFile(TextFile):
         #              [Tag(), Tag(), Tag(), Tag(), Tag()]]
 
         start = len(self.text[0])
+        end = start
         # words = self.text[1].split()
         sents = self.sents
         sent_tags = []
@@ -279,7 +294,7 @@ class ProtoFile(TextFile):
             word_tag = []
             tags_name_only = []
             for word in words:
-                start = (self.text[0] + self.text[1]).find(word, start + 1)
+                start = (self.text[0] + self.text[1]).find(word, end)
                 end = start + len(word)
 
                 tag = self.get_tag(word, start, end)
@@ -298,7 +313,7 @@ class ProtoFile(TextFile):
             ss = end
             words = self._word_tokenizer(sent)
             for word in words:
-                start = (self.text[0] + self.text[1]).find(word, start + 1)
+                start = (self.text[0] + self.text[1]).find(word, end)
                 end = start + len(word)
             se = end
             res.append((ss, se))
@@ -311,11 +326,11 @@ class ProtoFile(TextFile):
         sents = self.sents
         sent_tags = []
         for sent in sents:
-            words = self._word_tokenizer(sent)
+            words = self._word_tokenizer(sent, to_lowercase=True)
             word_tag = []
 
             for word in words:
-                start = (self.text[0] + self.text[1]).find(word, end + 1)
+                start = (self.text[0] + self.text[1]).find(word, end)
                 end = start + len(word)
 
                 tag = self.get_tag(word, start, end)
@@ -328,12 +343,12 @@ class ProtoFile(TextFile):
         start = len(self.text[0])
         end = start
         # words = self.text[1].split()
-        words = self._word_tokenizer(self.text[1])
+        words = self._word_tokenizer(self.text[1], to_lowercase=True)
         word_tag = []
         tags_name_only = []
 
         for word in words:
-            start = (self.text[0] + self.text[1]).find(word, end + 1)
+            start = (self.text[0] + self.text[1]).find(word, end)
             end = start + len(word)
 
             tag = self.get_tag(word, start, end)
@@ -343,3 +358,84 @@ class ProtoFile(TextFile):
 
         # ("Add", Tag("Action-Verb", ...)) , "Action-Verb"
         return word_tag, tags_name_only
+
+    # ###################interface from Article#############################################
+    # TODO clean this up
+    def populate_tokens(self, bio_encoding):
+        word_tags, _ = self.extract_tags()
+        word_tag_per_sent = self.extract_word_tags_per_sent()
+        tokens = [Token(word, (tag.tag_name + tag.tag_name_bio if bio_encoding else tag.tag_name))
+                  for word, tag in word_tags if tag.tag_name in cfg.LABELS + [cfg.NO_NE_LABEL]]
+        sents = self.extract_word_tags_per_sent()
+
+        token_sents = [[Token(word, (tag.tag_name_bio + tag.tag_name if bio_encoding else tag.tag_name))
+                  for word, tag in sent if tag.tag_name in cfg.LABELS + [cfg.NO_NE_LABEL]] for sent in sents]
+
+        words = ([word for word, tag in word_tags])
+
+        return word_tag_per_sent, tokens, words, token_sents
+
+    def get_content_as_string(self):
+        """Returns the article's content as string.
+        This is not neccessarily identical to the original text content, because multi-whitespaces
+        are replaced by single whitespaces.
+
+        Returns:
+            string (article/document content).
+        """
+        return " ".join([token.word for token in self.tokens])
+
+    def get_label_counts(self, add_no_ne_label=False):
+        """Returns the count of each label in the article/document.
+        Count means here: the number of words that have the label.
+
+        Args:
+            add_no_ne_label: Whether to count how often unlabeled words appear. (Default is False.)
+        Returns:
+            List of tuples of the form (label as string, count as integer).
+        """
+        if add_no_ne_label:
+            counts = Counter([token.label for token in self.tokens])
+        else:
+            counts = Counter([token.label for token in self.tokens \
+                              if token.label != cfg.NO_NE_LABEL])
+        return counts.most_common()
+
+    def count_labels(self, add_no_ne_label=False):
+        """Returns how many named entity tokens appear in the article/document.
+
+        Args:
+            add_no_ne_label: Whether to also count unlabeled words. (Default is False.)
+        Returns:
+            Count of all named entity tokens (integer).
+        """
+        return sum([count[1] for count in self.get_label_counts(add_no_ne_label=add_no_ne_label)])
+
+
+class Token(object):
+    """Encapsulates a token/word.
+    Members:
+        token.original: The original token, i.e. the word _and_ the label, e.g. "John/PER".
+        token.word: The string content of the token, without the label.
+        token.label: The label of the token.
+        token.feature_values: The feature values, after they have been applied.
+            (See Window.apply_features().)
+    """
+
+    def __init__(self, word, label=cfg.NO_NE_LABEL):
+        """Initialize a new Token object.
+        Args:
+            original: The original word as found in the text document, including the label,
+                e.g. "foo", "John/PER".
+        """
+        # self.original = original
+
+        self.word = word
+        self.label = label
+        # self._word_ascii = None
+        self.feature_values = None
+
+
+if __name__ == '__main__':
+    protofile = ProtoFile("simple_input/protocol_31")
+    sents, labels = protofile.extract_data_per_sent(True)
