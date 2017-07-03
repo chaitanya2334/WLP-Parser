@@ -6,6 +6,7 @@ from torch import nn, optim, max, LongTensor, cuda, sum, transpose, torch
 from torch.autograd import Variable
 from torch.nn.utils import clip_grad_norm
 
+from corpus.BratWriter import BratFile
 from corpus.Manager import Manager
 import config as cfg
 from model.SeqNet import SeqNet
@@ -13,9 +14,9 @@ from model.utils import to_scalar
 from postprocessing.evaluator import Evaluator
 from preprocessing.text_processing import prepare_embeddings
 import numpy as np
+import pickle
 
-
-
+from preprocessing.utils import quicksave, quickload, touch
 
 
 def argmax(var):
@@ -36,7 +37,7 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
         optimizer.zero_grad()
         model.zero_grad()
         model.init_state()
-        print(sample.C)
+
         lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])), sample.C)
 
         cfg.ver_print("lm_f_out", lm_f_out)
@@ -114,7 +115,7 @@ def build_model(train_data, dev_data, embedding_matrix):
                                           lm_f_criterion, lm_b_criterion, cfg.LM_GAMMA)
         train_eval.print_results()
 
-        dev_eval = test("dev", dev_data, model)
+        dev_eval, _, _ = test("dev", dev_data, model)
 
         dev_eval.verify_results()
 
@@ -148,23 +149,17 @@ def test(name, data, model):
         # remove start and stop tags
         seq_out = seq_out[1:-1]
 
-        _, predicted = max(seq_out.data, 1)
-
         pred = argmax(seq_out)
         evaluator.append_data(0, pred, sample.X[1:-1], sample.Y)
 
-        predicted = transpose(predicted, 0, 1)
-        predicted = predicted.view(predicted.size(1))
         # print(predicted)
-        total += Variable(cuda.LongTensor(sample.Y)).size(0)
-        correct += (predicted == cuda.LongTensor(sample.Y)).sum()
-        pred_list.append(predicted.cpu().numpy())
-        true_list.append(np.array(sample.Y))
+        pred_list.append(pred)
+        true_list.append(sample.Y)
 
     evaluator.gen_results()
     evaluator.print_results()
 
-    return evaluator
+    return evaluator, pred_list, true_list
 
 
 # pred and true are lists of numpy arrays. each numpy array represents a sample
@@ -181,8 +176,10 @@ def fscore(pred, true):
 
             elif p == t == 1:
                 tp += 1
+
             elif p == 0 and t == 1:
                 fn += 1
+
             elif p == 1 and t == 0:
                 fp += 1
 
@@ -196,18 +193,100 @@ def fscore(pred, true):
     print("fscore = {0}/{1} = {2}".format(2 * precision * recall, precision + recall, fs))
 
 
-if __name__ == '__main__':
-    corpus = Manager(cfg.ARTICLES_FOLDERPATH, cfg.COMMON_FOLDERPATH)
-    print("Preparing Embedding Matrix ...")
-    embedding_matrix, word_index, char_index = prepare_embeddings(replace_digit=cfg.REPLACE_DIGITS)
-    print("Loading Data ...")
-    corpus.gen_data(cfg.TRAIN_PERCENT, cfg.DEV_PERCENT, cfg.TEST_PERCENT,
-                    word_index, char_index, replace_digit=cfg.REPLACE_DIGITS, to_filter=cfg.FILTER_ALL_NEG)
+def dataset_prep(loadfile=None, savefile=None):
+    if loadfile:
+        print("Loading corpus and Embedding Matrix ...")
+        corpus, embedding_matrix = pickle.load(open(loadfile, "rb"))
+    else:
+        print("Preparing Embedding Matrix ...")
+        embedding_matrix, word_index, char_index = prepare_embeddings(replace_digit=cfg.REPLACE_DIGITS)
+        print("Loading Data ...")
+        corpus = Manager(word_index, char_index, load_file=cfg.DATASET_PICKLE, save_file=None)
+        corpus.gen_data(cfg.TRAIN_PERCENT, cfg.DEV_PERCENT, cfg.TEST_PERCENT, replace_digit=cfg.REPLACE_DIGITS,
+                        to_filter=cfg.FILTER_ALL_NEG)
 
-    print("Training ...")
-    the_model = build_model(corpus.train, corpus.dev,  embedding_matrix)
+        print("Training ...")
+        embedding_matrix = quickload("preprocessing/embedding_matrix.p")
+
+        if savefile:
+            pickle.dump((corpus, embedding_matrix), open(savefile, "wb"))
+
+    return corpus, embedding_matrix
+
+
+def single_run(corpus, embedding_matrix, index):
+    the_model = build_model(corpus.train, corpus.dev, embedding_matrix)
 
     print("Testing ...")
-    test_eval = test("test", corpus.test, the_model)
+    test_eval, pred_list, true_list = test("test", corpus.test, the_model)
+
+    print("Writing Brat File ...")
+    bratfile_full = BratFile(cfg.PRED_BRAT_FULL + str(index), cfg.TRUE_BRAT_FULL + str(index))
+    bratfile_inc = BratFile(cfg.PRED_BRAT_INC + str(index), cfg.TRUE_BRAT_INC + str(index))
+
+    quicksave((corpus.test, true_list, pred_list), "results.txt")
+    # test, true_list, pred_list = quickload("results.txt")
+    bratfile_full.from_labels([corpus.to_words(sample.X[1:-1]) for sample in corpus.test],
+                              [sample.P for sample in corpus.test],
+                              true_list, pred_list, doFull=True)
+    bratfile_inc.from_labels([corpus.to_words(sample.X[1:-1]) for sample in corpus.test],
+                             [sample.P for sample in corpus.test],
+                             true_list, pred_list, doFull=False)
 
     test_eval.print_results()
+
+    return test_eval
+
+
+if __name__ == '__main__':
+    corpus, emb_mat = dataset_prep(loadfile=cfg.FULL_DB_FILE)
+    i = 400
+    # touch(cfg.RESULT_FILE)
+    # LSTM + SOFTMAX
+    # cfg.LM_GAMMA = 0
+    # cfg.CHAR_LEVEL = None
+    # # lr = 0.03
+    # i = 0
+    # lrs = [0.03, 0.3, 1]
+    # for lr in lrs:
+    #     cfg.LEARNING_RATE = lr
+    #     print("LSTM + SOFTMAX; lr={0}".format(lr))
+    #     test_ev = single_run(corpus, emb_mat, i)
+    #     test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX; lr={0}".format(lr))
+    #     i += 1
+    #
+    # # LSTM + SOFTMAX + LM
+    # cfg.CHAR_LEVEL = None
+    #
+    # lrs = [0.03, 0.3, 1]
+    # gamma = [0.1, 0.3, 0.5]
+    #
+    # for lr in lrs:
+    #     for g in gamma:
+    #         cfg.LEARNING_RATE = lr
+    #         cfg.LM_GAMMA = g
+    #         print("LSTM + SOFTMAX + LM; lr={0}; g={1}".format(lr, g))
+    #         test_ev = single_run(corpus, emb_mat, i)
+    #         test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX + LM; lr={0}; g={1}".format(lr, g))
+    #         i += 1
+
+    # LSTM + SOFTMAX + LM + CHAR_INPUT
+    cfg.CHAR_LEVEL = "Input"
+    cfg.CHAR_VOCAB = len(corpus.char_index.items())
+
+    lrs = [0.03, 0.3, 1]
+    gamma = [0.1, 0.3, 0.5]
+
+    for lr in lrs:
+        for g in gamma:
+            cfg.LEARNING_RATE = lr
+            cfg.LM_GAMMA = g
+            print("LSTM + SOFTMAX + LM + CHAR_INPUT; lr={0}; g={1}".format(lr, g))
+            test_ev = single_run(corpus, emb_mat, i)
+            test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX + LM + CHAR_INPUT; lr={0}; g={1}".format(lr, g))
+            i += 1
+
+
+
+
+            #
