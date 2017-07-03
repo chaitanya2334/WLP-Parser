@@ -106,3 +106,9 @@ class Evaluator(object):
         if np.isnan(self.results[self.name + "_cost_sum"]) or np.isinf(self.results[self.name + "_cost_sum"]):
             sys.stderr.write("ERROR: Cost is NaN or Inf. Exiting.\n")
             exit()
+
+    def write_results(self, filename, text, spec='a'):
+        with open(filename, spec, encoding='utf-8') as f:
+            f.write(text + "\n")
+            for key in self.results:
+                f.write(key + ": " + str(self.results[key]) + "\n")
