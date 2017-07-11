@@ -1,4 +1,6 @@
-from torch import nn
+from torch import nn, torch, cuda
+import numpy as np
+from torch.autograd import Variable
 
 
 def to_scalar(var):
@@ -6,6 +8,23 @@ def to_scalar(var):
     f = var.view(-1).data.tolist()[0]
 
     return f
+
+
+def all_zeros(var):
+    return np.all(var.cpu().data.numpy() == 0)
+
+
+def is_batch_zeros(var, for_true=-1, for_false=1):
+    # var has to be a 2d tensor, first dim being the batch no.
+    torch.set_printoptions(profile="full")
+
+    x = np.all(var.cpu().data.numpy() == 0, axis=1)
+    x = x.astype(int)
+    x[x == 1] = for_true
+    x[x == 0] = for_false
+
+    var_x = Variable(torch.from_numpy(x).cuda())
+    return var_x
 
 
 class TimeDistributed(nn.Module):

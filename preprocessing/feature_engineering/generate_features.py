@@ -2,22 +2,20 @@ import pandas as pd
 from tabulate import tabulate
 
 import features_config as cfg
-from corpus.Manager import Manager
 from preprocessing.feature_engineering import features
-from preprocessing.feature_engineering.datasets import load_windows, generate_examples, load_articles
-from preprocessing.utils import quicksave
+from preprocessing.feature_engineering.datasets import load_windows, generate_examples
 
 
-def generate_features(articles):
+def generate_features(articles, nb_skip):
     print("Creating features...")
-    features_list = features.create_features()
+    features_list = features.create_features(articles)
 
     # Initialize the window generator
     # each window has a fixed maximum size of tokens
 
     print("Loading windows with features {0} ...".format([type(feature).__name__ for feature in features_list]))
 
-    windows = load_windows(articles, nb_skip=0,
+    windows = load_windows(articles, nb_skip=nb_skip,
                            features=features_list, only_labeled_windows=True)
 
     # Add chains of features (each list of lists of strings)
@@ -27,31 +25,27 @@ def generate_features(articles):
     # POS tags and LDA results are cached, so the second run through this part will be significantly
     # faster.
     examples = generate_examples(windows, nb_append=sum([article.nsents for article in articles if article.status]),
-                                 nb_skip=cfg.COUNT_WINDOWS_TEST, verbose=True)
+                                 nb_skip=nb_skip, verbose=True)
 
     feat_seq_list = []
-    y_labels = []
-    x_words = []
-    sent_counts = []
 
     for i, (features_dicts, words, labels) in enumerate(examples):
-        print(i)
-        print("----------------------------------")
-        df = pd.DataFrame(features_dicts)
-        df = df.fillna('#')
-        df = pd.get_dummies(df)
-        feat_seq_list.append(df.as_matrix())
-        if i == 10:
-            break
+        if i < nb_skip:
+            print("generate_features skipping: {0}".format(i))
+            yield ([], [])
 
-    for feat_seq in feat_seq_list:
-        print(tabulate(feat_seq, headers='keys', tablefmt='psql'))
+        elif not features_dicts and not words and not labels:
+            yield ([], [])
+        else:
+            print(i)
+            print("----------------------------------")
+            df = pd.DataFrame(features_dicts)
+            df = df.fillna('#')
+            df = pd.get_dummies(df)
 
-    return feat_seq_list
+            # print(tabulate(df, headers='keys', tablefmt='psql'))
+            print("Example:")
 
-if __name__ == '__main__':
-    corpus = Manager()
+            yield words, df.as_matrix()
 
-    articles = corpus.load_protofiles(cfg.ARTICLES_FOLDERPATH)
-    res = generate_features(articles)
-    quicksave(res, cfg.FEATURES_PICKLE)
+

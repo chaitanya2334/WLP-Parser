@@ -54,7 +54,7 @@ class TextFile(object):
             return self.Status.SENT
 
     @staticmethod
-    def _word_tokenizer(sent, to_lowercase):
+    def _word_tokenizer(sent, to_lowercase=False):
 
         words = nltk.word_tokenize(sent)
         ret_words = []

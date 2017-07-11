@@ -6,13 +6,13 @@ import os
 from collections import Counter, OrderedDict
 
 import features_config as cfg
-from corpus.Manager import Manager
+
 from preprocessing.feature_engineering.datasets import load_articles
 
 
 class Unigrams(object):
     """Class to handle the contents of a file containing unigrams."""
-    def __init__(self, filepath=None, skip_first_n=0, max_count_words=None):
+    def __init__(self, articles, filepath=None, skip_first_n=0, max_count_words=None):
         """Initialize the unigrams list, optionally from a file.
         Args:
             filepath: Optional filepath to a file containing the unigrams in the
@@ -20,6 +20,7 @@ class Unigrams(object):
             skip_first_n: Number of words to skip at the start of the unigrams file.
             max_count_words: Maxmimum number of words to read from the unigrams file.
         """
+        self.articles = articles
         self.word_to_rank = OrderedDict()
         self.word_to_count = OrderedDict()
         self.sum_of_counts = 0
@@ -30,7 +31,7 @@ class Unigrams(object):
             else:
                 self.fill_from_file(filepath, skip_first_n=skip_first_n, max_count_words=max_count_words)
         else:
-            self.fill_from_articles(cfg.ARTICLES_FOLDERPATH, verbose=True)
+            self.fill_from_articles(self.articles, verbose=True)
 
     def generate_unigrams(self, filepath):
 
@@ -81,7 +82,7 @@ class Unigrams(object):
                     print("[Warning] Expected 2 columns in unigrams file at line %d, " \
                           "got %d" % (line_idx, len(columns)))
 
-    def fill_from_articles(self, folderpath, verbose=False):
+    def fill_from_articles(self, articles, verbose=False):
         """Fills the dictionaries of this class from a corpus file.
 
         The corpus file is expected to contain one article/document per line.
@@ -92,12 +93,12 @@ class Unigrams(object):
         Note: This function is rather slow.
 
         Args:
-            folderpath: Filepath to the corpus file.
+            articles: Filepath to the corpus file.
             verbose: Whether to output messages during parsing.
         """
-        self.fill_from_articles_labels(folderpath, labels=None, verbose=verbose)
+        self.fill_from_articles_labels(articles, labels=None, verbose=verbose)
 
-    def fill_from_articles_labels(self, folderpath, labels=None, verbose=False):
+    def fill_from_articles_labels(self, articles, labels=None, verbose=False):
         """Fills the dictionaries of this class from a corpus file, optionally only with words of
         specific labels (e.g. only words labeled with "PER").
 
@@ -108,7 +109,7 @@ class Unigrams(object):
         Note: This function is rather slow.
 
         Args:
-            folderpath: Filepath to the corpus file.
+            articles: Filepath to the corpus file.
             labels: Optionally one or more labels. If provided, only words that are annotated
                 with any of these labels will be counted.
             verbose: Whether to output messages during parsing.
@@ -118,8 +119,7 @@ class Unigrams(object):
 
         counts = Counter()
         self.sum_of_counts = 0
-        corpus = Manager()
-        articles = corpus.load_protofiles(folderpath)
+
         for i, article in enumerate(articles):
             if article.status:
                 words = [token.word for token in article.tokens \

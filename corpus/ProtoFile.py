@@ -29,7 +29,6 @@ class ProtoFile(TextFile):
                                                                                         encoding='utf-8',
                                                                                         newline='') as a_f:
             self.text = t_f.readlines()
-            print(self.text)
             self.full_text = "".join(self.text)
             self.ann = a_f.readlines()
             self.status = self.__pretest()
@@ -239,14 +238,11 @@ class ProtoFile(TextFile):
         #              [Tag(), Tag(), Tag(), Tag(), Tag()]])
 
         start = len(self.text[0])
-        print(start)
         end = start
         # words = self.text[1].split()
         sents = self.sents
         sent_tags = []
-        print(self.full_text)
         for sent in sents:
-            print(sent)
 
             words = self._word_tokenizer(sent, to_lowercase=False)
             word_tag = []
@@ -256,7 +252,6 @@ class ProtoFile(TextFile):
                 start = self.full_text.find(word, end)
                 end = start + len(word)
                 tag = self.get_tag(word, start, end)
-                print(tag)
                 if with_bio:
                     tag_name = tag.tag_name_bio + tag.tag_name
 
@@ -294,7 +289,7 @@ class ProtoFile(TextFile):
             word_tag = []
             tags_name_only = []
             for word in words:
-                start = (self.text[0] + self.text[1]).find(word, end)
+                start = self.full_text.find(word, end)
                 end = start + len(word)
 
                 tag = self.get_tag(word, start, end)
@@ -313,7 +308,7 @@ class ProtoFile(TextFile):
             ss = end
             words = self._word_tokenizer(sent)
             for word in words:
-                start = (self.text[0] + self.text[1]).find(word, end)
+                start = self.full_text.find(word, end)
                 end = start + len(word)
             se = end
             res.append((ss, se))
@@ -326,17 +321,20 @@ class ProtoFile(TextFile):
         sents = self.sents
         sent_tags = []
         for sent in sents:
-            words = self._word_tokenizer(sent, to_lowercase=True)
+            words = self._word_tokenizer(sent)
             word_tag = []
 
             for word in words:
-                start = (self.text[0] + self.text[1]).find(word, end)
+                start = self.full_text.find(word, end)
                 end = start + len(word)
 
                 tag = self.get_tag(word, start, end)
 
                 word_tag.append((word, tag))
-            sent_tags.append(word_tag)
+
+            if word_tag:
+                sent_tags.append(word_tag)
+
         return sent_tags
 
     def extract_tags(self):

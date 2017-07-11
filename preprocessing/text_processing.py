@@ -74,8 +74,8 @@ def prepare_embeddings(use_norm=False, replace_digit=True, load_bin=True, suppor
     cfg.CHAR_VOCAB = len(char_index.items())
 
     if support_start_stop:
-        word_index['<s>'] = len(word_index)
-        word_index['</s>'] = len(word_index)
+        word_index['<s>'] = len(word_index)+1
+        word_index['</s>'] = len(word_index)+1
 
     with open('test_tokenizer.txt', 'w', encoding='utf-8') as out:
         out.writelines([item + ' ' + str(word_index[item]) + '\n' for item in sent_iter_flat])

@@ -12,7 +12,6 @@ CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 #   ....
 ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "simple_input")
 
-
 PUBMED_AND_PMC_W2V_BIN = os.path.join(CURRENT_DIR, "preprocessing/PubMed-and-PMC-w2v.bin")
 
 EMBEDDING_DIM = 200
@@ -78,8 +77,6 @@ UNK = "<unk>"
 
 RANDOM_TRAIN = False
 
-DATASET_PICKLE = os.path.join(CURRENT_DIR, "preprocessing/dataset/dataset_save.p")
-
 PRED_BRAT_FULL = "brat_results/pred/brat_out"
 TRUE_BRAT_FULL = "brat_results/true/brat_out"
 
@@ -92,7 +89,8 @@ BEST_MODEL_SELECTOR = "dev_conll_f"
 
 RESULT_FILE = os.path.join(CURRENT_DIR, "test_results.txt")
 
-FULL_DB_FILE = os.path.join(CURRENT_DIR, "dataset.p")
+DB_WITHOUT_FEATURES = os.path.join(CURRENT_DIR, "dataset_without_features.p")
+DB_WITH_FEATURES = os.path.join(CURRENT_DIR, "dataset_with_features.p")
 
 # Number of windows to use during training (offset is COUNT_WINDOWS_TEST, i.e. test windows will
 # be loaded first)
@@ -107,8 +105,10 @@ NO_NE_LABEL = "O"
 # labels to accept when parsing data, all other labels will be treated as normal text
 # e.g. in "Manhatten/NY" the "NY" will not be treated as a label and the full token
 # "Manhatten/NY" will be loaded as one word
-LABELS = ["Action", "Reagent", "Location", "Device", "Mention", "Method", "Seal", "Modifier", "Numerical", "Measure-Type",
-          "Unit", "Quantity", "Concentration", "Time", "Tool", "Temperature", "Rpm"]
+LABELS = ["Action", "Reagent", "Location", "Device", "Mention", "Method", "Seal", "Modifier", "Numerical",
+          "Measure-Type",
+          "Unit", "Quantity", "Concentration", "Time", "Tool", "Temperature", "Rpm", "Misc", "Action-Mention"]
+
 
 def ver_print(string, value):
     if VERBOSE:

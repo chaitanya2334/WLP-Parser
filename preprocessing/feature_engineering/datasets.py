@@ -132,28 +132,27 @@ def load_windows(articles, features=None, nb_skip=0, every_nth_window=0,
     processed_windows = 0
     for article in articles:
         # count how many labels there are in the article
-        print(article.protocol_name)
-        count = article.count_labels()
-
-        if only_labeled_windows and count == 0:
-            # ignore articles completely that have no labels at all, if that was requested via
-            # the parameters
-            pass
-        else:
+        if article.status:
+            print(article.protocol_name)
+            count = article.count_labels()
             # split the tokens in the article to windows
             token_windows = article.token_sents
+
+            pno = article.protocol_name
             # token_windows = split_to_chunks(article.tokens, window_size)
             for token_window in token_windows:
-                window = Window(token_window)
-                # ignore the window if it contains no labels and that was requested via parameters
-                if not only_labeled_windows or window.count_labels() > 0:
+                if nb_skip > skipped:
+                    skipped += 1
+                    yield Window([], "0")
+                    continue
+                window = Window(token_window, pno)
+                # generate features for all tokens in the window
 
-                    # generate features for all tokens in the window
-                    if features is not None:
-                        window.apply_features(features)
-                    yield window
-                    window = None
-                    processed_windows += 1
+                if features is not None and len(window.tokens) > 0:
+                    window.apply_features(features)
+                yield window
+                window = None
+                processed_windows += 1
 
 
 def generate_examples(windows, nb_append=None, nb_skip=0, verbose=True):
@@ -176,15 +175,17 @@ def generate_examples(windows, nb_append=None, nb_skip=0, verbose=True):
     for window in windows:
         # skip the first couple of windows, if nb_skip is > 0
         if skipped < nb_skip:
+            print(window.tokens)
+            assert not window.tokens  # make sure that when skipping windows generator is not generating anything.
             skipped += 1
             print("skipping {0} ...".format(skipped))
+            yield ({}, [], [])
 
-        elif window.count_action() == 0:
-            skipped += 1
-            print("skipping {0}.\n The above list Has no Action-Verb label".format(window.get_labels()))
-
+        elif not window.tokens:
+            yield ([], [], [])
         else:
             # chain of labels (list of strings)
+            assert window.tokens  # make sure that windows has tokens.
 
             labels = window.get_labels()
             words = window.get_words()
@@ -197,6 +198,8 @@ def generate_examples(windows, nb_append=None, nb_skip=0, verbose=True):
                                                      cfg.SKIPCHAIN_LEFT, cfg.SKIPCHAIN_RIGHT)
                 feature_values_lists.append(fvl)
             # yield (features, labels) pair
+
+            print("Window's protocol: {0}".format(window.pno))
             yield (feature_values_lists, words, labels)
 
             # print message every nth window
@@ -306,7 +309,7 @@ class Article(object):
 class Window:
     """Encapsulates a small window of text/tokens."""
 
-    def __init__(self, tokens):
+    def __init__(self, tokens, pno):
         """Initialize a new Window object.
 
         Args:
@@ -315,6 +318,7 @@ class Window:
         """
         # super(Window, self).__init__("")  # because pylint complains otherwise
         self.tokens = tokens
+        self.pno = pno
 
     def get_words(self):
 

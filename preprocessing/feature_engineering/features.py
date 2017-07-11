@@ -11,19 +11,20 @@ import re
 import sys
 from itertools import chain
 
+import copy
 from nltk import WordNetLemmatizer
 from nltk.corpus import wordnet
 from nltk.parse.stanford import StanfordDependencyParser
 
 # All capitalized constants come from this file
 import features_config as cfg
-from preprocessing.feature_engineering.brown import BrownClusters
+
 from preprocessing.feature_engineering.pos import PosTagger
 from preprocessing.feature_engineering.unigrams import Unigrams
-from preprocessing.feature_engineering.w2v import W2VClusters
 
 
-def create_features(verbose=True):
+
+def create_features(articles, verbose=True):
     """This method creates all feature generators.
     The feature generators will be used to convert windows of tokens to their string features.
 
@@ -34,7 +35,7 @@ def create_features(verbose=True):
     Returns:
         List of feature generators
         :param verbose: prints stuff if true
-        :param brown_bit_series: list of bit lengths that will be used as features
+        :param articles: list of bit lengths that will be used as features
     """
 
     def print_if_verbose(msg):
@@ -47,12 +48,8 @@ def create_features(verbose=True):
 
     # Load the most common unigrams. These will be used as features.
     print_if_verbose("Loading top N unigrams...")
-    ug_all_top = Unigrams(cfg.UNIGRAMS_FILEPATH, skip_first_n=cfg.UNIGRAMS_SKIP_FIRST_N,
+    ug_all_top = Unigrams(articles, skip_first_n=cfg.UNIGRAMS_SKIP_FIRST_N,
                           max_count_words=cfg.UNIGRAMS_MAX_COUNT_WORDS)
-
-    # Load all unigrams. These will be used to create the Gazetteer.
-    print_if_verbose("Loading all unigrams...")
-    ug_all = Unigrams(cfg.UNIGRAMS_FILEPATH)
 
     # Load all unigrams of person names (PER). These will be used to create the Gazetteer.
     # print_if_verbose("Loading person name unigrams...")
@@ -193,7 +190,19 @@ class DepTypeFeatures(object):
         return result
 
     def dependency_parse(self, window):
-        dep_graph = self.dep_parser.raw_parse(" ".join([token.word for token in window.tokens]))
+        # dependency parser breaks if there are two numbers next to each other in a very specific way.
+        # this is a work around
+        def digits(string):
+
+            n = ''.join(x for x in string if x.isdigit())
+            return n
+
+        tokens = copy.deepcopy(window.tokens)
+        for i in range(len(tokens) - 1):
+            if 0 < len(digits(tokens[i].word)) < 4 and len(digits(tokens[i + 1].word)) > 5:
+                tokens[i + 1].word = '0'
+
+        dep_graph = self.dep_parser.raw_parse(" ".join([token.word for token in tokens]))
         return dep_graph
 
 
@@ -236,7 +245,19 @@ class DepGraphFeatures(object):
         return result
 
     def dependency_parse(self, window):
-        dep_graph = self.dep_parser.raw_parse(" ".join([token.word for token in window.tokens]))
+        # dependency parser breaks if there are two numbers next to each other in a very specific way.
+        # this is a work around
+        def digits(string):
+
+            n = ''.join(x for x in string if x.isdigit())
+            return n
+
+        tokens = copy.deepcopy(window.tokens)
+        for i in range(len(tokens)-1):
+            if 0 < len(digits(tokens[i].word)) < 4 and len(digits(tokens[i+1].word)) > 5:
+                tokens[i+1].word = '0'
+
+        dep_graph = self.dep_parser.raw_parse(" ".join([token.word for token in tokens]))
 
         return dep_graph
 

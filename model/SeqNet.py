@@ -4,6 +4,7 @@ from torch.autograd import Variable
 import numpy as np
 
 import config as cfg
+from model.AttNet import AttNet
 from model.CharNet import CharNet
 from model.LMnet import LMnet
 from model.utils import to_scalar, TimeDistributed
@@ -29,10 +30,16 @@ class SeqNet(nn.Module):
 
         self.char_net = CharNet(cfg.CHAR_EMB_DIM, cfg.CHAR_RECURRENT_SIZE, out_size=cfg.EMBEDDING_DIM)
 
+        self.att_net = AttNet(cfg.EMBEDDING_DIM, cfg.EMBEDDING_DIM, cfg.EMBEDDING_DIM)
+
         if cfg.CHAR_LEVEL == "Input":
             self.lstm = nn.LSTM(input_size=self.emb_dim + self.char_emb_dim, batch_first=True, num_layers=self.num_layers,
                                 hidden_size=self.hidden_size,
                                 bidirectional=True)
+        elif cfg.CHAR_LEVEL == "Attention":
+            self.lstm = nn.LSTM(input_size=self.emb_dim, batch_first=True,
+                                num_layers=self.num_layers,
+                                hidden_size=self.hidden_size, bidirectional=True)
         else:
             self.lstm = nn.LSTM(input_size=self.emb_dim, batch_first=True,
                                 num_layers=self.num_layers,
@@ -77,6 +84,9 @@ class SeqNet(nn.Module):
         if cfg.CHAR_LEVEL == "Input":
             char_emb = self.char_net(char_idx_seq)
             inp = cat([emb, char_emb], dim=2)
+        elif cfg.CHAR_LEVEL == "Attention":
+            char_emb = self.char_net(char_idx_seq)
+            inp = self.att_net(emb, char_emb)
         else:
             inp = emb
 
@@ -108,16 +118,10 @@ class SeqNet(nn.Module):
         cfg.ver_print("LINEAR OUT", linear_out)
         cfg.ver_print("FINAL OUT", soft_out)
 
-        return lm_f_out, lm_b_out, soft_out
-
-        # My shame :(
-        # for x in range(lstm_out.size(1)):
-        #    linear_out = self.linear(lstm_out[0][x].view(1, self.hidden_size*self.num_dir))
-        #    soft_out = softmax(linear_out)
-        #    out_list.append(soft_out)
-
-        # final_out = cat(out_list)
-        # return final_out
+        if cfg.CHAR_LEVEL == "Attention":
+            return lm_f_out, lm_b_out, soft_out, emb, char_emb
+        else:
+            return lm_f_out, lm_b_out, soft_out
 
 
 class Embedding(nn.Module):
