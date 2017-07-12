@@ -23,7 +23,6 @@ from preprocessing.feature_engineering.pos import PosTagger
 from preprocessing.feature_engineering.unigrams import Unigrams
 
 
-
 def create_features(articles, verbose=True):
     """This method creates all feature generators.
     The feature generators will be used to convert windows of tokens to their string features.
@@ -78,7 +77,7 @@ def create_features(articles, verbose=True):
     # Load the wrapper for the stanford POS tagger
     print_if_verbose("Loading POS-Tagger...")
     pos = PosTagger(cfg.STANFORD_POS_JAR_FILEPATH, cfg.STANFORD_MODEL_FILEPATH,
-                    cache_filepath=cfg.POS_TAGGER_CACHE_FILEPATH)
+                    cache_filepath=None)
 
     dep_p = StanfordDependencyParser(path_to_jar=cfg.STANFORD_PARSER_JAR,
                                      path_to_models_jar=cfg.STANFORD_PARSER_MODEL_JAR)
@@ -253,11 +252,12 @@ class DepGraphFeatures(object):
             return n
 
         tokens = copy.deepcopy(window.tokens)
-        for i in range(len(tokens)-1):
-            if 0 < len(digits(tokens[i].word)) < 4 and len(digits(tokens[i+1].word)) > 5:
-                tokens[i+1].word = '0'
+        for i in range(len(tokens) - 1):
+            if 0 < len(digits(tokens[i].word)) < 4 and len(digits(tokens[i + 1].word)) > 5:
+                tokens[i + 1].word = '0'
 
         dep_graph = self.dep_parser.raw_parse(" ".join([token.word for token in tokens]))
+
 
         return dep_graph
 
@@ -297,9 +297,9 @@ class LemmatizerFeatures(object):
         return wordnet.NOUN
 
     def convert_window(self, window):
-        print("lemma ...", end=" ")
+        # print("lemma ...", end=" ")
         sys.stdout.flush()
-        pos_tags = self.stanford_pos_tag(window)
+        pos_tags = window.pos
         result = []
         sys.stdout.flush()
         # catch stupid problems with stanford POS tagger and unicode characters
@@ -323,7 +323,7 @@ class LemmatizerFeatures(object):
             # fill with empty feature value lists (one empty list per token)
             for _ in range(len(window.tokens)):
                 result.append([])
-        print("done")
+        # print("done")
         return result
 
     def stanford_pos_tag(self, window):
@@ -333,7 +333,7 @@ class LemmatizerFeatures(object):
         Returns:
             List of POS tags as strings.
         """
-        print([token.word for token in window.tokens])
+        # print([token.word for token in window.tokens])
         return self.pos_tagger.tag([token.word for token in window.tokens])
 
 
@@ -733,7 +733,7 @@ class UnigramFeature(object):
             Each feature is a string.
         """
         result = []
-        print("unigram ...", end=" ")
+        # print("unigram ...", end=" ")
         left_token = None
         token = None
         right_token = None
@@ -742,8 +742,9 @@ class UnigramFeature(object):
             token = window.tokens[i]
             result.append(["ng0=%s" % token.word])
 
-        print("done")
+        # print("done")
         return result
+
 
 class BigramFeature(object):
     """Generates a feature that lists a unigram word, and unigram words within a +1 and -1 context window.
@@ -768,7 +769,7 @@ class BigramFeature(object):
             Each feature is a string.
         """
         result = []
-        print("bigram ...", end=" ")
+        # print("bigram ...", end=" ")
         left_token = None
         token = None
         right_token = None
@@ -776,13 +777,14 @@ class BigramFeature(object):
         for i in range(len(window.tokens)):
             word1 = window.tokens[i].word
             if i < len(window.tokens) - 1:
-                word2 = window.tokens[i+1].word
+                word2 = window.tokens[i + 1].word
             else:
                 word2 = '#'
             result.append(["bg={0}{1}".format(word1, word2)])
 
-        print("done")
+        # print("done")
         return result
+
 
 class PrefixFeature(object):
     """Generates a feature that describes the prefix (the first three chars) of the word."""
@@ -858,11 +860,11 @@ class POSTagFeature(object):
             Each list can contain any number of features (including 0).
             Each feature is a string.
         """
-        print("pos ...", end=" ")
+        # print("pos ...", end=" ")
         sys.stdout.flush()
-        pos_tags = self.stanford_pos_tag(window)
+        pos_tags = window.pos
         result = []
-        print("stanford_done", end=" ")
+        # print("stanford_done", end=" ")
         sys.stdout.flush()
         # catch stupid problems with stanford POS tagger and unicode characters
         if len(pos_tags) == len(window.tokens):
@@ -881,7 +883,7 @@ class POSTagFeature(object):
             # fill with empty feature value lists (one empty list per token)
             for _ in range(len(window.tokens)):
                 result.append([])
-        print("done")
+        # print("done")
         return result
 
     def get_context_win(self, i, pos_tags):
@@ -897,11 +899,11 @@ class POSTagFeature(object):
 
     def stanford_pos_tag(self, window):
         """Converts a Window (list of tokens) to their POS tags.
-        Args:
-            window: Window object containing the token list to POS-tag.
-        Returns:
-            List of POS tags as strings.
-        """
+         Args:
+             window: Window object containing the token list to POS-tag.
+         Returns:
+             List of POS tags as strings.
+         """
 
         return self.pos_tagger.tag([token.word for token in window.tokens])
 

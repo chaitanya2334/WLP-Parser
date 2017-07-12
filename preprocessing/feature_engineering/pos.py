@@ -55,6 +55,46 @@ class PosTagger(object):
 
                 return tagged
 
+    def batch(self, iterable, n=1):
+        l = len(iterable)
+        ret = []
+        for ndx in range(0, l, n):
+            ret.append(iterable[ndx:min(ndx + n, l)])
+
+        return ret
+
+    ret = []
+
+    def chunkify(self, list2d, max):
+        _idx = []
+        _res = []
+        for i, list1d in enumerate(list2d):
+            b = self.batch(list1d, max)
+            _idx.extend([i] * len(b))
+            _res.extend(b)
+
+        return _idx, _res
+
+    def rebuild(self, _idx, _res):
+        ans = [[] for _ in range(max(_idx)+1)]
+
+        for i, x in zip(_idx, _res):
+            ans[i].extend(x)
+
+        return ans
+
+    def tag_sents(self, sents):
+        ret = []
+        for i, x in enumerate(self.batch(sents, 1000)):
+            idx, windows = self.chunkify(x, max=26)
+            print("Tagging batch {0}".format(i))
+            res = self.tagger.tag_sents(windows)
+            res = self.rebuild(idx, res)
+
+            ret.extend(res)
+
+        return ret
+
     def tag_uncached(self, tokens):
         """Annotate a list of strings with their POS tags without querying the cache.
         Args:
@@ -77,6 +117,7 @@ class PosTagger(object):
         for i in range(0, len(tokens), w):
             to_pos = tokens[i:i + w]
             pos.extend(self.tagger.tag(to_pos))
+
 
         return pos
 

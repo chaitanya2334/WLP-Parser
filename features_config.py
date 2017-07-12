@@ -64,7 +64,7 @@ LDA_WINDOW_SIZE = LDA_WINDOW_LEFT_SIZE + 1 + LDA_WINDOW_RIGHT_SIZE
 LDA_COUNT_TOPICS = 100
 
 # filepath to the directory containing the stanford POS tagger
-STANFORD_POS_DIR = os.path.join(CURRENT_DIR, "preprocessing/feature_engineering/stanford-postagger-full-2014-08-27")
+STANFORD_POS_DIR = os.path.join(CURRENT_DIR, "preprocessing/feature_engineering/stanford-postagger-full-2017-06-09")
 
 STANFORD_PARSER_PATH = os.path.join(CURRENT_DIR, "preprocessing/feature_engineering/stanford-parser-full-2016-10-31")
 
@@ -73,7 +73,7 @@ STANFORD_PARSER_JAR = os.path.join(STANFORD_PARSER_PATH, "stanford-parser.jar")
 STANFORD_PARSER_MODEL_JAR = os.path.join(STANFORD_PARSER_PATH, "stanford-parser-3.7.0-models.jar")
 
 # filepath to the jar of the stanford POS tagger
-STANFORD_POS_JAR_FILEPATH = os.path.join(STANFORD_POS_DIR, "stanford-postagger-3.4.1.jar")
+STANFORD_POS_JAR_FILEPATH = os.path.join(STANFORD_POS_DIR, "stanford-postagger-3.8.0.jar")
 
 # filepath to the used model of the stanford POS tagger (in subdirectory "models/" in the stanford
 # pos tagger's directory)

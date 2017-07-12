@@ -309,7 +309,7 @@ class Article(object):
 class Window:
     """Encapsulates a small window of text/tokens."""
 
-    def __init__(self, tokens, pno):
+    def __init__(self, sent, labels, pno, pos):
         """Initialize a new Window object.
 
         Args:
@@ -317,8 +317,9 @@ class Window:
                 objects.
         """
         # super(Window, self).__init__("")  # because pylint complains otherwise
-        self.tokens = tokens
+        self.tokens = [Token(word, label) for word, label in zip(sent, labels)]
         self.pno = pno
+        self.pos = pos
 
     def get_words(self):
 

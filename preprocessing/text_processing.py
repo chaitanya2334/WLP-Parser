@@ -4,7 +4,7 @@ from gensim.models import Word2Vec, KeyedVectors
 from keras.preprocessing.text import Tokenizer
 from torch import LongTensor, cuda
 
-from corpus.Manager import Manager, Dataset
+from corpus.Manager import Manager, Data
 import config as cfg
 import numpy as np
 import itertools
@@ -103,7 +103,7 @@ def prepare_embeddings(use_norm=False, replace_digit=True, load_bin=True, suppor
 # the batch variable is a list of list of words,
 # where the inner list is of variable length (represents a single sentence)
 def torchify(dataset, padding=True):
-    assert isinstance(dataset, Dataset)
+    assert isinstance(dataset, Data)
 
     batch = dataset.X
     label = dataset.Y
@@ -114,7 +114,7 @@ def torchify(dataset, padding=True):
         batch = pad(batch)
     batch = LongTensor(batch)
 
-    return Dataset(batch, label)
+    return Data(batch, label)
 
 
 def pad(batch):
@@ -129,7 +129,7 @@ def pad(batch):
 
 
 def batchify(dataset, batch_size=cfg.BATCH_SIZE):
-    assert isinstance(dataset, Dataset)
+    assert isinstance(dataset, Data)
 
     batch = dataset.X
     label = dataset.Y

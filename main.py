@@ -2,6 +2,8 @@ import random
 from decimal import Decimal
 
 import sys
+
+import time
 from torch import nn, optim, max, LongTensor, cuda, sum, transpose, torch, stack
 from torch.autograd import Variable
 from torch.nn.utils import clip_grad_norm
@@ -209,6 +211,8 @@ def fscore(pred, true):
 
 
 def dataset_prep(loadfile=None, savefile=None):
+    start_time = time.time()
+
     if loadfile:
         print("Loading corpus and Embedding Matrix ...")
         corpus, embedding_matrix = pickle.load(open(loadfile, "rb"))
@@ -216,15 +220,15 @@ def dataset_prep(loadfile=None, savefile=None):
         print("Preparing Embedding Matrix ...")
         embedding_matrix, word_index, char_index = prepare_embeddings(replace_digit=cfg.REPLACE_DIGITS)
         print("Loading Data ...")
-        corpus = Manager(word_index, char_index)
+        corpus = Manager(load_pos=True, word_index=word_index, char_index=char_index)
         corpus.gen_data((cfg.TRAIN_PERCENT, cfg.DEV_PERCENT, cfg.TEST_PERCENT), replace_digit=cfg.REPLACE_DIGITS,
                         to_filter=cfg.FILTER_ALL_NEG)
 
-        print("Training ...")
-        embedding_matrix = quickload("preprocessing/embedding_matrix.p")
-
         if savefile:
             pickle.dump((corpus, embedding_matrix), open(savefile, "wb"))
+
+    end_time = time.time()
+    print("Ready. Input Process time: {0}".format(end_time - start_time))
 
     return corpus, embedding_matrix
 
@@ -252,10 +256,8 @@ def single_run(corpus, embedding_matrix, index):
 
 
 if __name__ == '__main__':
-    corpus, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_FEATURES)
-    print("Ready")
-    for sample in corpus.train:
-        print(corpus.to_words(sample.X), sample.F)
+    dataset, emb_mat = dataset_prep(savefile=cfg.DB_WITH_FEATURES)
+
     i = 400
     # touch(cfg.RESULT_FILE)
     # LSTM + SOFTMAX
@@ -288,7 +290,7 @@ if __name__ == '__main__':
 
     # LSTM + SOFTMAX + LM + CHAR_INPUT
     cfg.CHAR_LEVEL = "Attention"
-    cfg.CHAR_VOCAB = len(corpus.char_index.items())
+    cfg.CHAR_VOCAB = len(dataset.char_index.items())
 
     lrs = [0.03, 0.3, 1]
     gamma = [0.1, 0.3, 0.5]
@@ -298,7 +300,7 @@ if __name__ == '__main__':
             cfg.LEARNING_RATE = lr
             cfg.LM_GAMMA = g
             print("LSTM + SOFTMAX + LM + CHAR_ATTENTION; lr={0}; g={1}".format(lr, g))
-            test_ev = single_run(corpus, emb_mat, i)
+            test_ev = single_run(dataset, emb_mat, i)
             test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX + LM + CHAR_ATTENTION; lr={0}; g={1}".format(lr, g))
             i += 1
 

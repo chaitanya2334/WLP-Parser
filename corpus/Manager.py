@@ -2,6 +2,14 @@ import glob
 import os
 import random
 from collections import namedtuple
+
+from nltk.parse.stanford import StanfordDependencyParser
+from progress.bar import Bar, IncrementalBar
+from torch import cuda, LongTensor
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+import features_config as feat_cfg
 import pickle
 
 import re
@@ -10,9 +18,14 @@ from keras.preprocessing.text import Tokenizer
 from keras.utils import to_categorical
 import numpy as np
 from torch.utils import data
+import copy
 
 import config as cfg
-from preprocessing.feature_engineering.generate_features import generate_features
+from preprocessing.feature_engineering import features
+from preprocessing.feature_engineering.datasets import Window
+import pandas as pd
+
+from preprocessing.feature_engineering.pos import PosTagger
 from preprocessing.utils import generate_pf_mat
 from corpus.ProtoFile import ProtoFile
 import itertools
@@ -21,12 +34,14 @@ from builtins import any as b_any
 # TODO fix corpus folder's structure and then improve this class
 from corpus.TextFile import TextFile
 
-Dataset = namedtuple('Dataset', ['X', 'C', 'Y', 'P', 'F'])
+Data = namedtuple('Data', ['X', 'C', 'Y', 'P', 'F'])
 
 
-class Manager(object):
-    def __init__(self, word_index=None, char_index=None, shuffle_once=True, load_file=None, save_file=None):
+class Manager(data.Dataset):
+    def __init__(self, load_pos=False, word_index=None, char_index=None, shuffle_once=True, load_file=None, save_file=None):
 
+        dep_p = StanfordDependencyParser(path_to_jar=feat_cfg.STANFORD_PARSER_JAR,
+                                         path_to_models_jar=feat_cfg.STANFORD_PARSER_MODEL_JAR)
         self.load_file = load_file
         self.save_file = save_file
         self.word_index = word_index
@@ -39,6 +54,48 @@ class Manager(object):
         self.test = []
         self.per = (100, 0, 0)
         self.tag_idx = {'B': 0, 'I': 1, 'O': 2}
+        self.sents, self.labels, self.pnos = self.__gen_data(replace_digit=True, to_filter=True)
+        print("Loading POS ...")
+        if load_pos:
+            self.pos = self.__gen_pos(self.sents)
+
+        self.feat_list = features.create_features(self.articles)
+        print("Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
+
+    @staticmethod
+    def __gen_pos(sents):
+        pos = PosTagger(feat_cfg.STANFORD_POS_JAR_FILEPATH, feat_cfg.STANFORD_MODEL_FILEPATH,
+                        cache_filepath=None)
+
+        return pos.tag_sents(sents)
+
+    def __getitem__(self, item):
+
+        x = self.__gen_sent_idx_seq(self.sents[item])
+        c = self.__prep_char_idx_seq(self.sents[item])
+        y = self.__to_categorical(self.labels[item], bio=True)
+        f = self.__gen_features(self.sents[item], self.labels[item], self.pnos[item], self.pos[item])
+        p = self.pnos[item]
+        return Data(x, c, y, p, f)
+
+    def __len__(self):
+
+        return len(self.sents)
+
+    def __gen_features(self, sent, labels, pno, pos):
+
+        window = Window(sent, labels, pno, pos)
+        window.apply_features(self.feat_list)
+        feature_dicts = []
+        for word_idx in range(len(window.tokens)):
+            fvl = window.get_feature_values_list(word_idx, feat_cfg.SKIPCHAIN_LEFT, feat_cfg.SKIPCHAIN_RIGHT)
+            feature_dicts.append(fvl)
+
+        df = pd.DataFrame(feature_dicts)
+        df = df.fillna('#')
+        df = pd.get_dummies(df)
+
+        return df.as_matrix()
 
     def set_per(self, per):
         self.per = per
@@ -67,7 +124,28 @@ class Manager(object):
 
         return len(sents)
 
-    def __gen_data(self, replace_digit, to_filter, nb_skip):
+    # TODO test
+    def __prep_char_idx_seq(self, sent):
+        cfg.ver_print("char_index", self.char_index)
+        char_idx_seq = [self.__to_idx_seq(list(cfg.SENT_START), start=cfg.WORD_START, end=cfg.WORD_END,
+                                          index=self.char_index)] + \
+                       [self.__to_idx_seq(list(word), start=cfg.WORD_START, end=cfg.WORD_END, index=self.char_index)
+                        for word in sent] + \
+                       [self.__to_idx_seq(list(cfg.SENT_END), start=cfg.WORD_START, end=cfg.WORD_END,
+                                          index=self.char_index)]
+
+        cfg.ver_print("char idx seq", char_idx_seq)
+        return char_idx_seq
+
+    def __gen_sent_idx_seq(self, sent):
+        cfg.ver_print("word_index", self.word_index)
+        sent_idx_seq = self.__to_idx_seq(sent, start=cfg.SENT_START, end=cfg.SENT_END, index=self.word_index)
+        cfg.ver_print("sent", sent)
+        cfg.ver_print("sent idx seq", sent_idx_seq)
+
+        return sent_idx_seq
+
+    def __gen_data(self, replace_digit, to_filter):
 
         # get list of list of words
         sents, labels, pno = self.__load_sents_and_labels(self.articles, with_bio=True)
@@ -76,49 +154,35 @@ class Manager(object):
         cfg.ver_print("labels", labels)
 
         # filter, such that only sentences that have atleast one action-verb will be taken into consideration
+        if to_filter:
+            self.__filter(sents, labels, pno)
 
         if replace_digit:
             sents = self.replace_num(sents)
 
-        cfg.ver_print("char_index", self.char_index)
-        char_idx_seq = [
-            self.__to_idx_seq([[cfg.SENT_START]], start=cfg.WORD_START, end=cfg.WORD_END, index=self.char_index) +
-            self.__to_idx_seq([list(word) for word in sent], start=cfg.WORD_START, end=cfg.WORD_END,
-                              index=self.char_index) +
-            self.__to_idx_seq([[cfg.SENT_END]], start=cfg.WORD_START, end=cfg.WORD_END, index=self.char_index)
-            for sent in sents]
-
-        cfg.ver_print("char idx seq", char_idx_seq)
         # convert list of list of words to list of list of word_indices
 
-        cfg.ver_print("word_index", self.word_index)
-        sent_idx_seq = self.__to_idx_seq(sents, start=cfg.SENT_START, end=cfg.SENT_END, index=self.word_index)
-        cfg.ver_print("sent", sents)
-        cfg.ver_print("sent idx seq", sent_idx_seq)
+        return sents, labels, pno
 
-        labels = self.__to_categorical(labels, bio=True)
-
-        labels = np.array(labels)
-
-        features = generate_features(self.articles, nb_skip)
-        i = 0
-        for x, c, y, p, (w, f) in zip(sent_idx_seq, char_idx_seq, labels, pno, features):
-            if i < nb_skip:
-                pass
-                # print(self.to_words(x), p)
-
-            elif to_filter and not self.does_sent_have_tags(self.to_text_label(y)):
-                print("skipping {0}... no tags found".format(i))
-                print(self.to_words(x), p)
-
-            else:
-                print(self.to_words(x)[1:-1])
-                print(self.__replace_num(w))
-                print(p)
-                assert self.to_words(x)[1:-1] == self.__to_lower(self.__replace_num(w))
-
-                yield Dataset(x, c, y, p, (w, f))
-            i += 1
+        # features = generate_features(self.articles, nb_skip)
+        # i = 0
+        # for x, c, y, p, (w, f) in zip(sent_idx_seq, char_idx_seq, labels, pno, features):
+        #     if i < nb_skip:
+        #         pass
+        #         # print(self.to_words(x), p)
+        #
+        #     elif to_filter and not self.does_sent_have_tags(self.to_text_label(y)):
+        #         print("skipping {0}... no tags found".format(i))
+        #         print(self.to_words(x), p)
+        #
+        #     else:
+        #         print(self.to_words(x)[1:-1])
+        #         print(self.__replace_num(w))
+        #         print(p)
+        #         assert self.to_words(x)[1:-1] == self.__to_lower(self.__replace_num(w))
+        #
+        #         yield Dataset(x, c, y, p, (w, f))
+        #     i += 1
 
     @staticmethod
     def split(seq, per):
@@ -169,6 +233,10 @@ class Manager(object):
 
         return self.split_data(ndev + 1, ntest, replace_digit, to_filter)
 
+    @staticmethod
+    def __collate(batch):
+        return batch
+
     def gen_data(self, per, replace_digit=True, to_filter=True):
         total = self.size(to_filter)
         print(total)
@@ -179,9 +247,22 @@ class Manager(object):
 
         assert ntest == total
 
-        self.train = list(self.split_data(0, ntrain, replace_digit, to_filter))
-        self.dev = list(self.split_data(ntrain + 1, ndev, replace_digit, to_filter))
-        self.test = list(self.split_data(ndev + 1, ntest, replace_digit, to_filter))
+        data = DataLoader(self, batch_size=1, num_workers=8, collate_fn=lambda x: x, shuffle=False)
+
+        bar = IncrementalBar('Processing', max=total,
+                             suffix="%(index)d / %(max)d - %(percent).2f%% - [%(elapsed_td)s / %(eta_td)s]")
+
+        for i, sample in enumerate(data):
+
+            bar.next()
+            if i < ntrain:
+                self.train.append(sample)
+            elif i < ntrain + ndev:
+                self.dev.append(sample)
+            else:
+                self.test.append(sample)
+
+        bar.finish()
 
     @staticmethod
     def __replace_num(list1d):
@@ -225,20 +306,17 @@ class Manager(object):
         return s, l, p
 
     @staticmethod
-    def __to_idx_seq(list2d, start, end, index):
-        idx_seq = []
-        for row in list2d:
-            row_idx_seq = [index[start]]
-            for item in row:
-                row_idx_seq.append(index[item.lower()])
-            row_idx_seq.append(index[end])
-            idx_seq.append(row_idx_seq)
+    def __to_idx_seq(list1d, start, end, index):
+        row_idx_seq = [index[start]]
+        for item in list1d:
+            row_idx_seq.append(index[item.lower()])
+        row_idx_seq.append(index[end])
 
-        return idx_seq
+        return row_idx_seq
 
     def __to_categorical(self, labels, bio=False):
 
-        # converts a list of list of labels to binary representation. a label is 1 if its an action-verb, else its 0
+        # converts a list of labels to binary representation. a label is 1 if its an action-verb, else its 0
         def split(_label):
             if _label == cfg.NEG_LABEL:
                 _bio_encoding = cfg.NEG_LABEL
@@ -248,20 +326,17 @@ class Manager(object):
 
             return _bio_encoding, _tag_name
 
-        y_train = []
+        ret = []
         cfg.ver_print("labels", labels)
-        for labels_sent in labels:
-            sent = []
-            for label in labels_sent:
-                bio_encoding, tag_name = split(label)
+        for label in labels:
+            bio_encoding, tag_name = split(label)
 
-                if tag_name == cfg.POSITIVE_LABEL:
-                    sent.append(self.tag_idx[bio_encoding])
-                else:
-                    sent.append(self.tag_idx[cfg.NEG_LABEL])
+            if tag_name == cfg.POSITIVE_LABEL:
+                ret.append(self.tag_idx[bio_encoding])
+            else:
+                ret.append(self.tag_idx[cfg.NEG_LABEL])
 
-            y_train.append(sent)
-        return y_train
+        return ret
 
     @staticmethod
     def __load_sents_and_labels(articles, with_bio=False):
