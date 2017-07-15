@@ -59,9 +59,7 @@ class SeqNet(nn.Module):
 
         # self.time_linear = TimeDistributed(self.linear, batch_first=True)
         self.hidden_state = self.init_state()
-        if isCrossEnt:
-            self.softmax = nn.Softmax()
-        else:
+        if not isCrossEnt:
             self.log_softmax = nn.LogSoftmax()
 
         self.isCrossEnt = isCrossEnt
@@ -111,17 +109,17 @@ class SeqNet(nn.Module):
 
         linear_out = self.linear(lstm_out.view(seq_len, -1))
         if self.isCrossEnt:
-            soft_out = self.softmax(linear_out)
+            out = linear_out
         else:
-            soft_out = self.log_softmax(linear_out)
+            out = self.log_softmax(linear_out)
 
         cfg.ver_print("LINEAR OUT", linear_out)
-        cfg.ver_print("FINAL OUT", soft_out)
+        cfg.ver_print("FINAL OUT", out)
 
         if cfg.CHAR_LEVEL == "Attention":
-            return lm_f_out, lm_b_out, soft_out, emb, char_emb
+            return lm_f_out, lm_b_out, out, emb, char_emb
         else:
-            return lm_f_out, lm_b_out, soft_out
+            return lm_f_out, lm_b_out, out
 
 
 class Embedding(nn.Module):
