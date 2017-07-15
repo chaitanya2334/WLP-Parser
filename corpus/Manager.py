@@ -155,7 +155,7 @@ class Manager(data.Dataset):
 
         # filter, such that only sentences that have atleast one action-verb will be taken into consideration
         if to_filter:
-            self.__filter(sents, labels, pno)
+            sents, labels, pno = self.__filter(sents, labels, pno)
 
         if replace_digit:
             sents = self.replace_num(sents)
@@ -242,10 +242,10 @@ class Manager(data.Dataset):
         print(total)
 
         ntrain = int((per[0] / 100) * total)
-        ndev = int(ntrain + (per[1] / 100) * total)
-        ntest = int(ndev + (per[2] / 100) * total)
+        ndev = int((per[1] / 100) * total)
+        ntest = int((per[2] / 100) * total)
 
-        assert ntest == total
+        assert ntrain + ndev + ntest == total
 
         data = DataLoader(self, batch_size=1, num_workers=8, collate_fn=lambda x: x, shuffle=False)
 
@@ -256,11 +256,11 @@ class Manager(data.Dataset):
 
             bar.next()
             if i < ntrain:
-                self.train.append(sample)
+                self.train.append(sample[0])
             elif i < ntrain + ndev:
-                self.dev.append(sample)
+                self.dev.append(sample[0])
             else:
-                self.test.append(sample)
+                self.test.append(sample[0])
 
         bar.finish()
 
