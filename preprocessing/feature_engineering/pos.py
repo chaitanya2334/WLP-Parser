@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
 """Class that wraps the Stanford POS tagger."""
 from __future__ import absolute_import, division, print_function, unicode_literals
+
+from math import ceil
+
 import nltk
 import shelve
 import random
+
+from tqdm import tqdm
+
 
 class PosTagger(object):
     """Class that wraps the Stanford POS tagger.
@@ -85,9 +91,8 @@ class PosTagger(object):
 
     def tag_sents(self, sents):
         ret = []
-        for i, x in enumerate(self.batch(sents, 1000)):
+        for i, x in tqdm(enumerate(self.batch(sents, 1000)), desc="Loading POS", total=ceil(len(sents)/1000)):
             idx, windows = self.chunkify(x, max=26)
-            print("Tagging batch {0}".format(i))
             res = self.tagger.tag_sents(windows)
             res = self.rebuild(idx, res)
 

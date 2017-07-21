@@ -11,7 +11,7 @@ from model.utils import to_scalar, TimeDistributed
 
 
 class SeqNet(nn.Module):
-    def __init__(self, emb_mat, isCrossEnt=True):
+    def __init__(self, emb_mat, isCrossEnt=True, imp_feat_v1=False, imp_feat_v2=False):
         super().__init__()
         self.emb_mat_tensor = Variable(cuda.FloatTensor(emb_mat))
         assert self.emb_mat_tensor.size(1) == cfg.EMBEDDING_DIM
@@ -24,6 +24,8 @@ class SeqNet(nn.Module):
         self.out_size = cfg.CATEGORIES
         self.pf_dim = cfg.PF_EMBEDDING_DIM
         self.char_emb_dim = cfg.EMBEDDING_DIM
+        self.imp_feat_v1 = imp_feat_v1
+        self.imp_feat_v2 = imp_feat_v2
 
         # init embedding layer, with pre-trained embedding matrix : emb_mat
         self.emb_lookup = Embedding(self.emb_mat_tensor)
@@ -33,7 +35,8 @@ class SeqNet(nn.Module):
         self.att_net = AttNet(cfg.EMBEDDING_DIM, cfg.EMBEDDING_DIM, cfg.EMBEDDING_DIM)
 
         if cfg.CHAR_LEVEL == "Input":
-            self.lstm = nn.LSTM(input_size=self.emb_dim + self.char_emb_dim, batch_first=True, num_layers=self.num_layers,
+            self.lstm = nn.LSTM(input_size=self.emb_dim + self.char_emb_dim, batch_first=True,
+                                num_layers=self.num_layers,
                                 hidden_size=self.hidden_size,
                                 bidirectional=True)
         elif cfg.CHAR_LEVEL == "Attention":
@@ -46,6 +49,9 @@ class SeqNet(nn.Module):
                                 hidden_size=self.hidden_size,
                                 bidirectional=True)
 
+        if self.imp_feat_v2:
+            self.feat_net = None
+
         self.lm_forward = TimeDistributed(LMnet(input_size=self.hidden_size,
                                                 out_size=min(self.vocab_size + 1, cfg.LM_MAX_VOCAB_SIZE),
                                                 hidden_size=cfg.LM_HIDDEN_SIZE), batch_first=True)
@@ -53,9 +59,14 @@ class SeqNet(nn.Module):
         self.lm_backward = TimeDistributed(LMnet(input_size=self.hidden_size,
                                                  out_size=min(self.vocab_size + 1, cfg.LM_MAX_VOCAB_SIZE),
                                                  hidden_size=cfg.LM_HIDDEN_SIZE), batch_first=True)
+        if self.imp_feat_v1:
+            self.linear = nn.Linear(cfg.LSTM_OUT_SIZE + cfg.FEATURE_SIZE,
+                                    self.out_size)
+        else:
+            self.linear = nn.Linear(cfg.LSTM_OUT_SIZE,
+                                    self.out_size)
 
-        self.linear = nn.Linear(self.hidden_size * self.num_dir,
-                                self.out_size)
+        self.lstm_linear = nn.Linear(self.hidden_size * 2, cfg.LSTM_OUT_SIZE)
 
         # self.time_linear = TimeDistributed(self.linear, batch_first=True)
         self.hidden_state = self.init_state()
@@ -73,7 +84,7 @@ class SeqNet(nn.Module):
 
         self.char_net.init_state()
 
-    def forward(self, sent_idx_seq, char_idx_seq):
+    def forward(self, sent_idx_seq, char_idx_seq, features):
         cfg.ver_print("Sent Index sequence", sent_idx_seq)
 
         seq_len = sent_idx_seq.size(1)
@@ -100,14 +111,28 @@ class SeqNet(nn.Module):
         assert to_scalar(torch.sum(lstm_forward[:, seq_len - 1, :] - hidden_state[0][0, :, :])) == 0
         assert to_scalar(torch.sum(lstm_backward[:, 0, :] - hidden_state[0][1, :, :])) == 0
 
-        lm_f_out = self.lm_forward(lstm_forward[:, :-1, :])  # verify this
+        lm_f_out = self.lm_forward(lstm_forward[:, :-1, :])
 
-        lm_b_out = self.lm_backward(lstm_backward[:, 1:, :])  # verify this
+        lm_b_out = self.lm_backward(lstm_backward[:, 1:, :])
 
         cfg.ver_print("Language Model Forward pass out", lm_f_out)
         cfg.ver_print("Language Model Backward pass out", lm_b_out)
 
-        linear_out = self.linear(lstm_out.view(seq_len, -1))
+        lstm_out = self.lstm_linear(lstm_out.squeeze())
+
+        lstm_out = torch.sigmoid(lstm_out)
+
+        lstm_out = lstm_out.unsqueeze(dim=0)
+
+        if self.imp_feat_v1:
+            label_out = cat([lstm_out, features], dim=2)
+        elif self.imp_feat_v2:
+            f_out = self.feat_net(features)
+            label_out = cat([lstm_out, f_out])
+        else:
+            label_out = lstm_out
+
+        linear_out = self.linear(label_out.view(seq_len, -1))
         if self.isCrossEnt:
             out = linear_out
         else:

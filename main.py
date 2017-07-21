@@ -4,12 +4,13 @@ from decimal import Decimal
 import sys
 
 import time
-from torch import nn, optim, max, LongTensor, cuda, sum, transpose, torch, stack
+from torch import nn, optim, max, LongTensor, cuda, sum, transpose, torch, stack, tensor
 from torch.autograd import Variable
 from torch.nn.utils import clip_grad_norm
+from torch.utils.data import DataLoader
 
 from corpus.BratWriter import BratFile
-from corpus.Manager import Manager
+from corpus.Manager import Manager, CustomDataset
 import config as cfg
 from model.SeqNet import SeqNet
 from model.utils import to_scalar, all_zeros, is_batch_zeros
@@ -17,6 +18,7 @@ from postprocessing.evaluator import Evaluator
 from preprocessing.text_processing import prepare_embeddings
 import numpy as np
 import pickle
+import pandas as pd
 
 from preprocessing.utils import quicksave, quickload, touch
 
@@ -40,15 +42,21 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
         model.zero_grad()
         model.init_state()
         if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(Variable(cuda.LongTensor([sample.X])), sample.C)
-
-            t = []
-
+            # padding cos features are not designed for start and end sentence tags
+            f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
+            np.set_printoptions(threshold=np.nan)
+            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(Variable(cuda.LongTensor([sample.X])),
+                                                               sample.C,
+                                                               Variable(torch.from_numpy(f)).float().unsqueeze(
+                                                                   dim=0).cuda())
             t = is_batch_zeros(emb.squeeze())
-
             char_att_loss = att_loss(emb.squeeze(), char_emb.squeeze(), t)
         else:
-            lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])), sample.C)
+            # padding cos features are not designed for start and end sentence tags
+            f = np.lib.pad(sample.F, (1, 1), 'constant', constant_values=(0, 0))
+            np.set_printoptions(threshold=np.nan)
+            lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])),
+                                                sample.C, sample.F)
 
         cfg.ver_print("lm_f_out", lm_f_out)
         cfg.ver_print("lm_b_out", lm_b_out)
@@ -91,9 +99,9 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
     return evaluator, model
 
 
-def build_model(train_data, dev_data, embedding_matrix):
+def build_model(train_dataset, dev_dataset, embedding_matrix):
     # init model
-    model = SeqNet(embedding_matrix, False)
+    model = SeqNet(embedding_matrix, isCrossEnt=False, imp_feat_v1=False)
 
     # Turn on cuda
     model = model.cuda()
@@ -121,15 +129,16 @@ def build_model(train_data, dev_data, embedding_matrix):
         print('-' * 40)
 
         random.seed(epoch)
-        data_copy = list(train_data)
-        if cfg.RANDOM_TRAIN:
-            random.shuffle(data_copy)
+        train_loader = DataLoader(train_dataset, batch_size=1, shuffle=cfg.RANDOM_TRAIN,
+                                  num_workers=8, collate_fn=lambda x: x[0])
 
-        train_eval, model = train_a_epoch("train", data_copy, model, optimizer, seq_criterion,
+        train_eval, model = train_a_epoch("train", train_loader, model, optimizer, seq_criterion,
                                           lm_f_criterion, lm_b_criterion, att_loss, cfg.LM_GAMMA)
         train_eval.print_results()
 
-        dev_eval, _, _ = test("dev", dev_data, model)
+        dev_loader = DataLoader(dev_dataset, batch_size=1, num_workers=8, collate_fn=lambda x: x[0])
+
+        dev_eval, _, _ = test("dev", dev_loader, model)
 
         dev_eval.verify_results()
 
@@ -159,9 +168,14 @@ def test(name, data, model):
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=None, conll_eval=True)
     for sample in data:
         if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(Variable(cuda.LongTensor([sample.X])), sample.C)
+            f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
+            np.set_printoptions(threshold=np.nan)
+
+            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(Variable(cuda.LongTensor([sample.X])), sample.C,
+                                                               Variable(torch.from_numpy(f)).float().unsqueeze(
+                                                                   dim=0).cuda())
         else:
-            lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])), sample.C)
+            lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])), sample.C, sample.F)
 
         # remove start and stop tags
         seq_out = seq_out[1:-1]
@@ -216,15 +230,16 @@ def dataset_prep(loadfile=None, savefile=None):
     if loadfile:
         print("Loading corpus and Embedding Matrix ...")
         corpus, embedding_matrix = pickle.load(open(loadfile, "rb"))
+        corpus.gen_data(cfg.PER)
     else:
         print("Preparing Embedding Matrix ...")
         embedding_matrix, word_index, char_index = prepare_embeddings(replace_digit=cfg.REPLACE_DIGITS)
         print("Loading Data ...")
-        corpus = Manager(load_pos=True, word_index=word_index, char_index=char_index)
-        corpus.gen_data((cfg.TRAIN_PERCENT, cfg.DEV_PERCENT, cfg.TEST_PERCENT), replace_digit=cfg.REPLACE_DIGITS,
-                        to_filter=cfg.FILTER_ALL_NEG)
+        corpus = Manager(preload=True, word_index=word_index, char_index=char_index)
+        corpus.gen_data(cfg.PER)
 
         if savefile:
+            print("Saving corpus and embedding matrix ...")
             pickle.dump((corpus, embedding_matrix), open(savefile, "wb"))
 
     end_time = time.time()
@@ -237,7 +252,8 @@ def single_run(corpus, embedding_matrix, index):
     the_model = build_model(corpus.train, corpus.dev, embedding_matrix)
 
     print("Testing ...")
-    test_eval, pred_list, true_list = test("test", corpus.test, the_model)
+    test_loader = DataLoader(corpus.test, batch_size=1, num_workers=8, collate_fn=lambda x: x[0])
+    test_eval, pred_list, true_list = test("test", test_loader, the_model)
 
     print("Writing Brat File ...")
     bratfile_full = BratFile(cfg.PRED_BRAT_FULL + str(index), cfg.TRUE_BRAT_FULL + str(index))
@@ -256,51 +272,51 @@ def single_run(corpus, embedding_matrix, index):
 
 
 if __name__ == '__main__':
-    dataset, emb_mat = dataset_prep(savefile=cfg.DB_WITH_FEATURES)
+    dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_FEATURES)
 
     i = 400
-    # touch(cfg.RESULT_FILE)
-    # LSTM + SOFTMAX
-    # cfg.LM_GAMMA = 0
-    # cfg.CHAR_LEVEL = None
-    # # lr = 0.03
-    # i = 0
-    # lrs = [0.03, 0.3, 1]
-    # for lr in lrs:
-    #     cfg.LEARNING_RATE = lr
-    #     print("LSTM + SOFTMAX; lr={0}".format(lr))
-    #     test_ev = single_run(corpus, emb_mat, i)
-    #     test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX; lr={0}".format(lr))
-    #     i += 1
+    # # touch(cfg.RESULT_FILE)
+    # # LSTM + SOFTMAX
+    # # cfg.LM_GAMMA = 0
+    # # cfg.CHAR_LEVEL = None
+    # # # lr = 0.03
+    # # i = 0
+    # # lrs = [0.03, 0.3, 1]
+    # # for lr in lrs:
+    # #     cfg.LEARNING_RATE = lr
+    # #     print("LSTM + SOFTMAX; lr={0}".format(lr))
+    # #     test_ev = single_run(corpus, emb_mat, i)
+    # #     test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX; lr={0}".format(lr))
+    # #     i += 1
+    # #
+    # # # LSTM + SOFTMAX + LM
+    # # cfg.CHAR_LEVEL = None
+    # #
+    # # lrs = [0.03, 0.3, 1]
+    # # gamma = [0.1, 0.3, 0.5]
+    # #
+    # # for lr in lrs:
+    # #     for g in gamma:
+    # #         cfg.LEARNING_RATE = lr
+    # #         cfg.LM_GAMMA = g
+    # #         print("LSTM + SOFTMAX + LM; lr={0}; g={1}".format(lr, g))
+    # #         test_ev = single_run(corpus, emb_mat, i)
+    # #         test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX + LM; lr={0}; g={1}".format(lr, g))
+    # #         i += 1
     #
-    # # LSTM + SOFTMAX + LM
-    # cfg.CHAR_LEVEL = None
-    #
-    # lrs = [0.03, 0.3, 1]
-    # gamma = [0.1, 0.3, 0.5]
-    #
-    # for lr in lrs:
-    #     for g in gamma:
-    #         cfg.LEARNING_RATE = lr
-    #         cfg.LM_GAMMA = g
-    #         print("LSTM + SOFTMAX + LM; lr={0}; g={1}".format(lr, g))
-    #         test_ev = single_run(corpus, emb_mat, i)
-    #         test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX + LM; lr={0}; g={1}".format(lr, g))
-    #         i += 1
-
     # LSTM + SOFTMAX + LM + CHAR_INPUT
-    cfg.CHAR_LEVEL = "Attention"
+    cfg.CHAR_LEVEL = "None"
     cfg.CHAR_VOCAB = len(dataset.char_index.items())
+    cfg.FEATURE_SIZE = dataset.train[0].F.shape[1]
 
-    lrs = [0.03, 0.3, 1]
-    gamma = [0.1, 0.3, 0.5]
+    lrs = [1]
+    gamma = [0]
 
     for lr in lrs:
         for g in gamma:
             cfg.LEARNING_RATE = lr
             cfg.LM_GAMMA = g
-            print("LSTM + SOFTMAX + LM + CHAR_ATTENTION; lr={0}; g={1}".format(lr, g))
+            print("LSTM + SOFTMAX + LM + CHAR_ATTENTION+Features-v1; lr={0}; g={1}".format(lr, g))
             test_ev = single_run(dataset, emb_mat, i)
             test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX + LM + CHAR_ATTENTION; lr={0}; g={1}".format(lr, g))
             i += 1
-

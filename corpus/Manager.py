@@ -3,22 +3,19 @@ import os
 import random
 from collections import namedtuple
 
-from nltk.parse.stanford import StanfordDependencyParser
-from progress.bar import Bar, IncrementalBar
-from torch import cuda, LongTensor
-from torch.utils.data import DataLoader
+
+from sklearn.preprocessing import OneHotEncoder
+from tabulate import tabulate
+
 from tqdm import tqdm
 
 import features_config as feat_cfg
-import pickle
+
 
 import re
-from keras.preprocessing.sequence import pad_sequences
-from keras.preprocessing.text import Tokenizer
-from keras.utils import to_categorical
-import numpy as np
+
 from torch.utils import data
-import copy
+
 
 import config as cfg
 from preprocessing.feature_engineering import features
@@ -26,7 +23,7 @@ from preprocessing.feature_engineering.datasets import Window
 import pandas as pd
 
 from preprocessing.feature_engineering.pos import PosTagger
-from preprocessing.utils import generate_pf_mat
+
 from corpus.ProtoFile import ProtoFile
 import itertools
 from builtins import any as b_any
@@ -37,30 +34,149 @@ from corpus.TextFile import TextFile
 Data = namedtuple('Data', ['X', 'C', 'Y', 'P', 'F'])
 
 
-class Manager(data.Dataset):
-    def __init__(self, load_pos=False, word_index=None, char_index=None, shuffle_once=True, load_file=None, save_file=None):
+class CustomDataset(data.Dataset):
+    def __init__(self, sents, labels, cut_list, enc, f_df, pnos, char_index, word_index):
+        self.sents = sents
+        self.labels = labels
+        self.cut_list = cut_list
+        self.enc = enc
+        self.f_df = f_df
+        self.pnos = pnos
+        self.char_index = char_index
+        self.word_index = word_index
 
-        dep_p = StanfordDependencyParser(path_to_jar=feat_cfg.STANFORD_PARSER_JAR,
-                                         path_to_models_jar=feat_cfg.STANFORD_PARSER_MODEL_JAR)
-        self.load_file = load_file
-        self.save_file = save_file
+        self.tag_idx = {'B': 0, 'I': 1, 'O': 2}
+
+    def __getitem__(self, item):
+        x = self.__gen_sent_idx_seq(self.sents[item])
+        c = self.__prep_char_idx_seq(self.sents[item])
+        y = self.to_categorical(self.labels[item], bio=True)
+
+        f = self.f_df[self.cut_list[item]:self.cut_list[item+1]]
+        f = self.enc.transform(f.as_matrix()).todense()
+        p = self.pnos[item]
+        assert len(x) == len(f) + 2, (len(x), len(f))
+        return Data(x, c, y, p, f)
+
+    def __len__(self):
+        return len(self.sents)
+
+    def __gen_sent_idx_seq(self, sent):
+        cfg.ver_print("word_index", self.word_index)
+        sent_idx_seq = self.__to_idx_seq(sent, start=cfg.SENT_START, end=cfg.SENT_END, index=self.word_index)
+        cfg.ver_print("sent", sent)
+        cfg.ver_print("sent idx seq", sent_idx_seq)
+
+        return sent_idx_seq
+
+    @staticmethod
+    def __to_idx_seq(list1d, start, end, index):
+        row_idx_seq = [index[start]]
+        for item in list1d:
+            row_idx_seq.append(index[item.lower()])
+        row_idx_seq.append(index[end])
+
+        return row_idx_seq
+
+    def __prep_char_idx_seq(self, sent):
+        cfg.ver_print("char_index", self.char_index)
+        char_idx_seq = [self.__to_idx_seq(list(cfg.SENT_START), start=cfg.WORD_START, end=cfg.WORD_END,
+                                          index=self.char_index)] + \
+                       [self.__to_idx_seq(list(word), start=cfg.WORD_START, end=cfg.WORD_END, index=self.char_index)
+                        for word in sent] + \
+                       [self.__to_idx_seq(list(cfg.SENT_END), start=cfg.WORD_START, end=cfg.WORD_END,
+                                          index=self.char_index)]
+
+        cfg.ver_print("char idx seq", char_idx_seq)
+        return char_idx_seq
+
+    def to_categorical(self, labels, bio=False):
+
+        # converts a list of labels to binary representation. a label is 1 if its an action-verb, else its 0
+        def split(_label):
+            if _label == cfg.NEG_LABEL:
+                _bio_encoding = cfg.NEG_LABEL
+                _tag_name = "NoTag"
+            else:
+                _bio_encoding, _tag_name = _label.split("-", 1)
+
+            return _bio_encoding, _tag_name
+
+        ret = []
+        cfg.ver_print("labels", labels)
+        for label in labels:
+            bio_encoding, tag_name = split(label)
+
+            if tag_name == cfg.POSITIVE_LABEL:
+                ret.append(self.tag_idx[bio_encoding])
+            else:
+                ret.append(self.tag_idx[cfg.NEG_LABEL])
+
+        return ret
+
+
+class Manager(object):
+    def __init__(self, preload=False, word_index=None, char_index=None, shuffle_once=True):
+
         self.word_index = word_index
         self.char_index = char_index
         self.articles = None
         self.total = 0
         self.load_protofiles(cfg.ARTICLES_FOLDERPATH)
-        self.train = []
-        self.dev = []
-        self.test = []
-        self.per = (100, 0, 0)
         self.tag_idx = {'B': 0, 'I': 1, 'O': 2}
         self.sents, self.labels, self.pnos = self.__gen_data(replace_digit=True, to_filter=True)
+        self.total = len(self.sents)
+        self.train = None
+        self.dev = None
+        self.test = None
         print("Loading POS ...")
-        if load_pos:
+        if preload:
             self.pos = self.__gen_pos(self.sents)
+            self.feat_list = features.create_features(self.articles)
+            print(
+                "Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
 
-        self.feat_list = features.create_features(self.articles)
-        print("Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
+            self.enc, self.f_df, self.cut_list = self.__gen_all_features(self.sents, self.labels, self.pnos, self.pos)
+            # print(tabulate(self.f_df, headers='keys', tablefmt='psql'))
+
+    def gen_data(self, per):
+        ntrain, ndev, ntest = self.__split_dataset(per, self.total)
+
+        self.train = CustomDataset(self.sents[0:ntrain], self.labels[0:ntrain], self.cut_list[0:ntrain+1], self.enc,
+                                   self.f_df, self.pnos[0:ntrain],
+                                   self.char_index, self.word_index)
+        self.dev = CustomDataset(self.sents[ntrain:ndev], self.labels[ntrain:ndev], self.cut_list[ntrain:ndev+1],
+                                 self.enc, self.f_df, self.pnos[ntrain:ndev],
+                                 self.char_index, self.word_index)
+        self.test = CustomDataset(self.sents[ndev:ntest], self.labels[ndev:ntest], self.cut_list[ndev:ntest+1], self.enc,
+                                  self.f_df, self.pnos[ndev:ntest],
+                                  self.char_index, self.word_index)
+
+        assert len(self.train) + len(self.dev) + len(self.test) == self.total
+
+    def __gen_all_features(self, sents, labels, pnos, pos):
+        mega_df = pd.DataFrame()
+        i = 0
+        cut_list = [0]
+        count = 0
+        for sent, label, pno, p in tqdm(zip(sents, labels, pnos, pos), desc="Collecting features", total=len(sents)):
+            df = self.__gen_single_feature(sent, label, pno, p)
+            mega_df = pd.concat([mega_df, df])
+            cut_list.append(i + len(sent))
+            i += len(sent)
+
+        mega_df = mega_df.fillna(0)
+        print(tabulate(mega_df, headers='keys', tablefmt='psql'))
+        char_cols = mega_df.dtypes.pipe(lambda x: x[x == 'object']).index
+
+        for c in char_cols:
+            mega_df[c] = pd.factorize(mega_df[c])[0]
+
+        print(tabulate(mega_df, headers='keys', tablefmt='psql'))
+        enc = OneHotEncoder()
+        enc.fit(mega_df.as_matrix())
+
+        return enc, mega_df, cut_list
 
     @staticmethod
     def __gen_pos(sents):
@@ -69,20 +185,7 @@ class Manager(data.Dataset):
 
         return pos.tag_sents(sents)
 
-    def __getitem__(self, item):
-
-        x = self.__gen_sent_idx_seq(self.sents[item])
-        c = self.__prep_char_idx_seq(self.sents[item])
-        y = self.__to_categorical(self.labels[item], bio=True)
-        f = self.__gen_features(self.sents[item], self.labels[item], self.pnos[item], self.pos[item])
-        p = self.pnos[item]
-        return Data(x, c, y, p, f)
-
-    def __len__(self):
-
-        return len(self.sents)
-
-    def __gen_features(self, sent, labels, pno, pos):
+    def __gen_single_feature(self, sent, labels, pno, pos):
 
         window = Window(sent, labels, pno, pos)
         window.apply_features(self.feat_list)
@@ -92,13 +195,8 @@ class Manager(data.Dataset):
             feature_dicts.append(fvl)
 
         df = pd.DataFrame(feature_dicts)
-        df = df.fillna('#')
-        df = pd.get_dummies(df)
 
-        return df.as_matrix()
-
-    def set_per(self, per):
-        self.per = per
+        return df
 
     def load_filenames(self, dir_path):
         filenames = self.__from_dir(dir_path, extension="ann")
@@ -125,25 +223,6 @@ class Manager(data.Dataset):
         return len(sents)
 
     # TODO test
-    def __prep_char_idx_seq(self, sent):
-        cfg.ver_print("char_index", self.char_index)
-        char_idx_seq = [self.__to_idx_seq(list(cfg.SENT_START), start=cfg.WORD_START, end=cfg.WORD_END,
-                                          index=self.char_index)] + \
-                       [self.__to_idx_seq(list(word), start=cfg.WORD_START, end=cfg.WORD_END, index=self.char_index)
-                        for word in sent] + \
-                       [self.__to_idx_seq(list(cfg.SENT_END), start=cfg.WORD_START, end=cfg.WORD_END,
-                                          index=self.char_index)]
-
-        cfg.ver_print("char idx seq", char_idx_seq)
-        return char_idx_seq
-
-    def __gen_sent_idx_seq(self, sent):
-        cfg.ver_print("word_index", self.word_index)
-        sent_idx_seq = self.__to_idx_seq(sent, start=cfg.SENT_START, end=cfg.SENT_END, index=self.word_index)
-        cfg.ver_print("sent", sent)
-        cfg.ver_print("sent idx seq", sent_idx_seq)
-
-        return sent_idx_seq
 
     def __gen_data(self, replace_digit, to_filter):
 
@@ -212,57 +291,21 @@ class Manager(data.Dataset):
         print(int(stop - start))
         return itertools.islice(self.__gen_data(replace_num, to_filter, start), int(stop - start))
 
-    def gen_train(self, replace_digit=True, to_filter=True):
-        total = self.size(to_filter)
-        ntrain = int((self.per[0] / 100) * total)
-        print(ntrain)
-        return self.split_data(0, ntrain, replace_digit, to_filter)
+    @staticmethod
+    def __split_dataset(per, size):
+        assert sum(per) == 100
+        res = ()
+        cum_per = 0
+        for p in per:
+            cum_per += p
+            nxt = int((cum_per / 100) * size)
+            res = res + (nxt,)
 
-    def gen_dev(self, replace_digit=True, to_filter=True):
-        total = self.size(to_filter)
-        ntrain = int((self.per[0] / 100) * total)
-        ndev = int(ntrain + (self.per[1] / 100) * total)
-
-        return self.split_data(ntrain + 1, ndev, replace_digit, to_filter)
-
-    def gen_test(self, replace_digit=True, to_filter=True):
-        total = self.size(to_filter)
-        ntrain = int((self.per[0] / 100) * total)
-        ndev = int(ntrain + (self.per[1] / 100) * total)
-        ntest = int(ndev + (self.per[2] / 100) * total)
-
-        return self.split_data(ndev + 1, ntest, replace_digit, to_filter)
+        return res
 
     @staticmethod
     def __collate(batch):
         return batch
-
-    def gen_data(self, per, replace_digit=True, to_filter=True):
-        total = self.size(to_filter)
-        print(total)
-
-        ntrain = int((per[0] / 100) * total)
-        ndev = int((per[1] / 100) * total)
-        ntest = int((per[2] / 100) * total)
-
-        assert ntrain + ndev + ntest == total
-
-        data = DataLoader(self, batch_size=1, num_workers=8, collate_fn=lambda x: x, shuffle=False)
-
-        bar = IncrementalBar('Processing', max=total,
-                             suffix="%(index)d / %(max)d - %(percent).2f%% - [%(elapsed_td)s / %(eta_td)s]")
-
-        for i, sample in enumerate(data):
-
-            bar.next()
-            if i < ntrain:
-                self.train.append(sample[0])
-            elif i < ntrain + ndev:
-                self.dev.append(sample[0])
-            else:
-                self.test.append(sample[0])
-
-        bar.finish()
 
     @staticmethod
     def __replace_num(list1d):
@@ -304,39 +347,6 @@ class Manager(data.Dataset):
                 p.append(single_p)
 
         return s, l, p
-
-    @staticmethod
-    def __to_idx_seq(list1d, start, end, index):
-        row_idx_seq = [index[start]]
-        for item in list1d:
-            row_idx_seq.append(index[item.lower()])
-        row_idx_seq.append(index[end])
-
-        return row_idx_seq
-
-    def __to_categorical(self, labels, bio=False):
-
-        # converts a list of labels to binary representation. a label is 1 if its an action-verb, else its 0
-        def split(_label):
-            if _label == cfg.NEG_LABEL:
-                _bio_encoding = cfg.NEG_LABEL
-                _tag_name = "NoTag"
-            else:
-                _bio_encoding, _tag_name = _label.split("-", 1)
-
-            return _bio_encoding, _tag_name
-
-        ret = []
-        cfg.ver_print("labels", labels)
-        for label in labels:
-            bio_encoding, tag_name = split(label)
-
-            if tag_name == cfg.POSITIVE_LABEL:
-                ret.append(self.tag_idx[bio_encoding])
-            else:
-                ret.append(self.tag_idx[cfg.NEG_LABEL])
-
-        return ret
 
     @staticmethod
     def __load_sents_and_labels(articles, with_bio=False):

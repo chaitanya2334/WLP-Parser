@@ -24,6 +24,8 @@ LEARNING_RATE = 0.3
 
 LSTM_HIDDEN_SIZE = 200
 
+LSTM_OUT_SIZE = 200
+
 MAX_EPOCH = 100
 
 VERBOSE = False
@@ -43,11 +45,7 @@ FILTER_ALL_NEG = True
 
 MAX_EPOCH_IMP = 20
 
-TRAIN_PERCENT = 60
-
-DEV_PERCENT = 20
-
-TEST_PERCENT = 20
+PER = (60, 20, 20)
 
 LM_HIDDEN_SIZE = 50
 
@@ -109,6 +107,9 @@ LABELS = ["Action", "Reagent", "Location", "Device", "Mention", "Method", "Seal"
           "Measure-Type",
           "Unit", "Quantity", "Concentration", "Time", "Tool", "Temperature", "Rpm", "Misc", "Action-Mention"]
 
+FEATURE_SIZE = 0
+
+FEAT_FILE = os.path.join(CURRENT_DIR, "features.csv")
 
 def ver_print(string, value):
     if VERBOSE:

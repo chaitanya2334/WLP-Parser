@@ -6,7 +6,7 @@ import glob
 import os
 import re
 # from unidecode import unidecode
-from collections import Counter, namedtuple
+from collections import Counter, namedtuple, OrderedDict
 
 import features_config as cfg
 from corpus.ProtoFile import ProtoFile
@@ -380,7 +380,7 @@ class Window:
 
     @staticmethod
     def convert_list_2_dict(of_list):
-        of_dict = {}
+        of_dict = OrderedDict()
         for item in of_list:
             w1, w2 = re.search('(.*)=(.*)', item).groups()
             of_dict[w1] = w2

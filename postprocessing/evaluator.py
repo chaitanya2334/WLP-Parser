@@ -61,7 +61,7 @@ class Evaluator(object):
                         self.id2label[predicted_labels[i]]))
             except KeyError:
                 print("Unexpected label id in predictions.")
-            self.conll_format.append("")
+        self.conll_format.append("")
 
     def gen_results(self):
         p = (float(self.main_correct_count) / float(self.main_predicted_count)) if (
