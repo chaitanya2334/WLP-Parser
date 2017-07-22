@@ -41,10 +41,12 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
         optimizer.zero_grad()
         model.zero_grad()
         model.init_state()
+        f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
+        np.set_printoptions(threshold=np.nan)
+
         if cfg.CHAR_LEVEL == "Attention":
             # padding cos features are not designed for start and end sentence tags
-            f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
-            np.set_printoptions(threshold=np.nan)
+
             lm_f_out, lm_b_out, seq_out, emb, char_emb = model(Variable(cuda.LongTensor([sample.X])),
                                                                sample.C,
                                                                Variable(torch.from_numpy(f)).float().unsqueeze(
@@ -53,10 +55,9 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
             char_att_loss = att_loss(emb.squeeze(), char_emb.squeeze(), t)
         else:
             # padding cos features are not designed for start and end sentence tags
-            f = np.lib.pad(sample.F, (1, 1), 'constant', constant_values=(0, 0))
-            np.set_printoptions(threshold=np.nan)
             lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])),
-                                                sample.C, sample.F)
+                                                sample.C,
+                                                Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda())
 
         cfg.ver_print("lm_f_out", lm_f_out)
         cfg.ver_print("lm_b_out", lm_b_out)
@@ -101,7 +102,7 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
 
 def build_model(train_dataset, dev_dataset, embedding_matrix):
     # init model
-    model = SeqNet(embedding_matrix, isCrossEnt=False, imp_feat_v1=False)
+    model = SeqNet(embedding_matrix, isCrossEnt=False, char_level=cfg.CHAR_LEVEL, imp_feat=cfg.FEATURE_LEVEL)
 
     # Turn on cuda
     model = model.cuda()
@@ -167,15 +168,16 @@ def test(name, data, model):
     true_list = []
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=None, conll_eval=True)
     for sample in data:
+        f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
+        np.set_printoptions(threshold=np.nan)
         if cfg.CHAR_LEVEL == "Attention":
-            f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
-            np.set_printoptions(threshold=np.nan)
-
             lm_f_out, lm_b_out, seq_out, emb, char_emb = model(Variable(cuda.LongTensor([sample.X])), sample.C,
                                                                Variable(torch.from_numpy(f)).float().unsqueeze(
                                                                    dim=0).cuda())
         else:
-            lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])), sample.C, sample.F)
+            lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])), sample.C,
+                                                Variable(torch.from_numpy(f)).float().unsqueeze(
+                                                                   dim=0).cuda())
 
         # remove start and stop tags
         seq_out = seq_out[1:-1]
@@ -304,19 +306,20 @@ if __name__ == '__main__':
     # #         test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX + LM; lr={0}; g={1}".format(lr, g))
     # #         i += 1
     #
-    # LSTM + SOFTMAX + LM + CHAR_INPUT
-    cfg.CHAR_LEVEL = "None"
+    # LSTM + SOFTMAX + LM + CHAR + Featv1
+
+    cfg.CHAR_LEVEL = "Input"
     cfg.CHAR_VOCAB = len(dataset.char_index.items())
     cfg.FEATURE_SIZE = dataset.train[0].F.shape[1]
-
-    lrs = [1]
-    gamma = [0]
+    cfg.FEATURE_LEVEL = "v1"
+    lrs = [0.03, 0.3, 1]
+    gamma = [0.1, 0.3, 0.5]
 
     for lr in lrs:
         for g in gamma:
             cfg.LEARNING_RATE = lr
             cfg.LM_GAMMA = g
-            print("LSTM + SOFTMAX + LM + CHAR_ATTENTION+Features-v1; lr={0}; g={1}".format(lr, g))
+            print("LSTM + LM + CHAR_INPUT + Featv1; lr={0}; g={1}".format(lr, g))
             test_ev = single_run(dataset, emb_mat, i)
-            test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX + LM + CHAR_ATTENTION; lr={0}; g={1}".format(lr, g))
+            test_ev.write_results(cfg.RESULT_FILE, "LSTM + LM + CHAR_INPUT + Featv1; lr={0}; g={1}".format(lr, g))
             i += 1

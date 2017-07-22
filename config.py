@@ -64,7 +64,7 @@ CHAR_EMB_DIM = 50
 CHAR_RECURRENT_SIZE = 200
 
 CHAR_VOCAB = 0
-CHAR_LEVEL = None
+CHAR_LEVEL = "None"
 
 WORD_START = "<w>"
 WORD_END = "</w>"
@@ -110,6 +110,8 @@ LABELS = ["Action", "Reagent", "Location", "Device", "Mention", "Method", "Seal"
 FEATURE_SIZE = 0
 
 FEAT_FILE = os.path.join(CURRENT_DIR, "features.csv")
+
+FEATURE_LEVEL = "None"
 
 def ver_print(string, value):
     if VERBOSE:
