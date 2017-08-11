@@ -8,6 +8,7 @@ from torch import nn, optim, max, LongTensor, cuda, sum, transpose, torch, stack
 from torch.autograd import Variable
 from torch.nn.utils import clip_grad_norm
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from corpus.BratWriter import BratFile
 from corpus.Manager import Manager, CustomDataset
@@ -36,7 +37,7 @@ def argmax(var):
 def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, lm_b_criterion, att_loss, gamma):
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=None, conll_eval=True)
 
-    for sample in data:
+    for sample in tqdm(data, desc=name, total=len(data)):
         # zero the parameter gradients
         optimizer.zero_grad()
         model.zero_grad()
@@ -112,7 +113,8 @@ def build_model(train_dataset, dev_dataset, embedding_matrix):
     # print(list(model.parameters()))
 
     # init gradient descent optimizer
-    optimizer = optim.Adadelta(model.parameters(), lr=cfg.LEARNING_RATE)
+
+    optimizer = optim.Adadelta([{'params': model.linear.parameters(), 'weight_decay': cfg.FEAT_L2_REG}], lr=cfg.LEARNING_RATE)
     # optimizer = optim.SGD(model.parameters(), lr=cfg.LEARNING_RATE, momentum=0.9)
     optimizer.zero_grad()
     model.zero_grad()
@@ -167,7 +169,7 @@ def test(name, data, model):
     pred_list = []
     true_list = []
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=None, conll_eval=True)
-    for sample in data:
+    for sample in tqdm(data, desc=name, total=len(data)):
         f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
         np.set_printoptions(threshold=np.nan)
         if cfg.CHAR_LEVEL == "Attention":
@@ -237,7 +239,7 @@ def dataset_prep(loadfile=None, savefile=None):
         print("Preparing Embedding Matrix ...")
         embedding_matrix, word_index, char_index = prepare_embeddings(replace_digit=cfg.REPLACE_DIGITS)
         print("Loading Data ...")
-        corpus = Manager(preload=True, word_index=word_index, char_index=char_index)
+        corpus = Manager(word_index=word_index, char_index=char_index)
         corpus.gen_data(cfg.PER)
 
         if savefile:
@@ -274,9 +276,8 @@ def single_run(corpus, embedding_matrix, index):
 
 
 if __name__ == '__main__':
-    dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_FEATURES)
+    dataset, emb_mat = dataset_prep(savefile=cfg.DB_WITH_FEATURES)
 
-    i = 400
     # # touch(cfg.RESULT_FILE)
     # # LSTM + SOFTMAX
     # # cfg.LM_GAMMA = 0
@@ -308,18 +309,23 @@ if __name__ == '__main__':
     #
     # LSTM + SOFTMAX + LM + CHAR + Featv1
 
-    cfg.CHAR_LEVEL = "Input"
-    cfg.CHAR_VOCAB = len(dataset.char_index.items())
-    cfg.FEATURE_SIZE = dataset.train[0].F.shape[1]
-    cfg.FEATURE_LEVEL = "v1"
-    lrs = [0.03, 0.3, 1]
-    gamma = [0.1, 0.3, 0.5]
-
-    for lr in lrs:
-        for g in gamma:
-            cfg.LEARNING_RATE = lr
-            cfg.LM_GAMMA = g
-            print("LSTM + LM + CHAR_INPUT + Featv1; lr={0}; g={1}".format(lr, g))
-            test_ev = single_run(dataset, emb_mat, i)
-            test_ev.write_results(cfg.RESULT_FILE, "LSTM + LM + CHAR_INPUT + Featv1; lr={0}; g={1}".format(lr, g))
-            i += 1
+    # cfg.CHAR_LEVEL = "Input"
+    # cfg.CHAR_VOCAB = len(dataset.char_index.items())
+    # cfg.FEATURE_SIZE = dataset.train[0].F.shape[1]
+    # cfg.FEATURE_LEVEL = "v1"
+    # lrs = [0.3]
+    # gamma = [0.5]
+    # l2_reg = [i/10000 for i in range(1, 10)]
+    #
+    # for l2 in l2_reg:
+    #     for lr in lrs:
+    #         for g in gamma:
+    #             cfg.LEARNING_RATE = lr
+    #             cfg.LM_GAMMA = g
+    #             cfg.FEAT_L2_REG = l2
+    #             s = "LSTM + LM + CHAR_INPUT + Featv1; lr={0}; g={1}; l2={2}".\
+    #                 format(cfg.LEARNING_RATE, cfg.LM_GAMMA, cfg.FEAT_L2_REG)
+    #             print(s)
+    #             test_ev = single_run(dataset, emb_mat, i)
+    #             test_ev.write_results(cfg.RESULT_FILE, text=s)
+    #             i += 1
