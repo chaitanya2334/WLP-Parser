@@ -109,9 +109,9 @@ LABELS = ["Action", "Reagent", "Location", "Device", "Mention", "Method", "Seal"
 
 FEATURE_SIZE = 0
 
-FEAT_FILE = os.path.join(CURRENT_DIR, "features.csv")
-
 FEATURE_LEVEL = "None"
+
+FEAT_L2_REG = 0.3
 
 def ver_print(string, value):
     if VERBOSE:
