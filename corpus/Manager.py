@@ -116,7 +116,7 @@ class CustomDataset(data.Dataset):
 
 
 class Manager(object):
-    def __init__(self, preload=False, word_index=None, char_index=None, shuffle_once=True):
+    def __init__(self, word_index=None, char_index=None, shuffle_once=True):
 
         self.word_index = word_index
         self.char_index = char_index
@@ -130,14 +130,12 @@ class Manager(object):
         self.dev = None
         self.test = None
         print("Loading POS ...")
-        if preload:
-            self.pos = self.__gen_pos(self.sents)
-            self.feat_list = features.create_features(self.articles)
-            print(
-                "Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
+        self.pos = self.__gen_pos(self.sents)
+        self.feat_list = features.create_features(self.articles)
+        print("Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
 
-            self.enc, self.f_df, self.cut_list = self.__gen_all_features(self.sents, self.labels, self.pnos, self.pos)
-            # print(tabulate(self.f_df, headers='keys', tablefmt='psql'))
+        self.enc, self.f_df, self.cut_list = self.__gen_all_features(self.sents, self.labels, self.pnos, self.pos)
+        # print(tabulate(self.f_df, headers='keys', tablefmt='psql'))
 
     def gen_data(self, per):
         ntrain, ndev, ntest = self.__split_dataset(per, self.total)
@@ -208,12 +206,13 @@ class Manager(object):
 
         if dir_path and filenames is None:
             filenames = self.__from_dir(dir_path, extension="ann")
-            print(len(filenames))
 
         self.articles = [ProtoFile(filename) for filename in filenames]
 
         if shuffle_once:
             random.shuffle(self.articles)
+
+        print("loaded {0} articles".format(len(self.articles)))
 
     def size(self, to_filter=False):
         sents, labels, pno = self.__load_sents_and_labels(self.articles, with_bio=True)
