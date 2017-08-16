@@ -1,7 +1,5 @@
 import random
-from decimal import Decimal
-
-import sys
+import os
 
 import time
 from torch import nn, optim, max, LongTensor, cuda, sum, transpose, torch, stack, tensor
@@ -38,6 +36,7 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=None, conll_eval=True)
 
     for sample in tqdm(data, desc=name, total=len(data)):
+        # print(list(zip(sample.X, sample.Y)))
         # zero the parameter gradients
         optimizer.zero_grad()
         model.zero_grad()
@@ -114,7 +113,7 @@ def build_model(train_dataset, dev_dataset, embedding_matrix):
 
     # init gradient descent optimizer
 
-    optimizer = optim.Adadelta([{'params': model.linear.parameters(), 'weight_decay': cfg.FEAT_L2_REG}], lr=cfg.LEARNING_RATE)
+    optimizer = optim.Adadelta(model.parameters(), lr=cfg.LEARNING_RATE)
     # optimizer = optim.SGD(model.parameters(), lr=cfg.LEARNING_RATE, momentum=0.9)
     optimizer.zero_grad()
     model.zero_grad()
@@ -239,7 +238,7 @@ def dataset_prep(loadfile=None, savefile=None):
         print("Preparing Embedding Matrix ...")
         embedding_matrix, word_index, char_index = prepare_embeddings(replace_digit=cfg.REPLACE_DIGITS)
         print("Loading Data ...")
-        corpus = Manager(word_index=word_index, char_index=char_index)
+        corpus = Manager(load_feat=True, word_index=word_index, char_index=char_index)
         corpus.gen_data(cfg.PER)
 
         if savefile:
@@ -252,8 +251,12 @@ def dataset_prep(loadfile=None, savefile=None):
     return corpus, embedding_matrix
 
 
-def single_run(corpus, embedding_matrix, index):
-    the_model = build_model(corpus.train, corpus.dev, embedding_matrix)
+def single_run(corpus, embedding_matrix, index, title, overwrite, only_test=False):
+    if not only_test:
+        the_model = build_model(corpus.train, corpus.dev, embedding_matrix)
+    else:
+        the_model = torch.load(cfg.MODEL_SAVE_FILEPATH)
+
 
     print("Testing ...")
     test_loader = DataLoader(corpus.test, batch_size=1, num_workers=8, collate_fn=lambda x: x[0])
@@ -271,61 +274,64 @@ def single_run(corpus, embedding_matrix, index):
                              true_list, pred_list, doFull=False)
 
     test_eval.print_results()
+    txt_res_file = os.path.join(cfg.TEXT_RESULT_DIR, title + ".txt")
+    csv_res_file = os.path.join(cfg.CSV_RESULT_DIR, title + ".csv")
+    test_eval.write_results(txt_res_file, title + "g={0}".format(cfg.LM_GAMMA), overwrite)
+    test_eval.write_csv_results(csv_res_file, title + "g={0}".format(cfg.LM_GAMMA), overwrite)
 
     return test_eval
 
 
 if __name__ == '__main__':
-    dataset, emb_mat = dataset_prep(savefile=cfg.DB_WITH_FEATURES)
 
-    # # touch(cfg.RESULT_FILE)
-    # # LSTM + SOFTMAX
-    # # cfg.LM_GAMMA = 0
-    # # cfg.CHAR_LEVEL = None
-    # # # lr = 0.03
-    # # i = 0
-    # # lrs = [0.03, 0.3, 1]
-    # # for lr in lrs:
-    # #     cfg.LEARNING_RATE = lr
-    # #     print("LSTM + SOFTMAX; lr={0}".format(lr))
-    # #     test_ev = single_run(corpus, emb_mat, i)
-    # #     test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX; lr={0}".format(lr))
-    # #     i += 1
-    # #
-    # # # LSTM + SOFTMAX + LM
-    # # cfg.CHAR_LEVEL = None
-    # #
-    # # lrs = [0.03, 0.3, 1]
-    # # gamma = [0.1, 0.3, 0.5]
-    # #
-    # # for lr in lrs:
-    # #     for g in gamma:
-    # #         cfg.LEARNING_RATE = lr
-    # #         cfg.LM_GAMMA = g
-    # #         print("LSTM + SOFTMAX + LM; lr={0}; g={1}".format(lr, g))
-    # #         test_ev = single_run(corpus, emb_mat, i)
-    # #         test_ev.write_results(cfg.RESULT_FILE, "LSTM + SOFTMAX + LM; lr={0}; g={1}".format(lr, g))
-    # #         i += 1
+    dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_FEATURES)
+    i = 10
+    # touch(cfg.RESULT_FILE)
+    # LSTM
+    #cfg.LM_GAMMA = 0
+    #cfg.CHAR_LEVEL = None
+    #i = 0
+    #print("LSTM")
+    #test_ev = single_run(dataset, emb_mat, i, "LSTM", overwrite=False, only_test=True)
+    #i += 1
+
     #
+    # LSTM + LM
+    # cfg.CHAR_LEVEL = None
+    #
+    # gamma = [0.3, 0.5]
+    # #
+    # for g in gamma:
+    #     cfg.LM_GAMMA = g
+    #     print("LSTM + LM; g={0}".format(g))
+    #     test_ev = single_run(dataset, emb_mat, i, "LSTM_LM g={0}".format(g), overwrite=False)
+    #     i += 1
+    #
+    # LSTM + LM + CHAR_INPUT
+
+    cfg.CHAR_LEVEL = "Input"
+    cfg.CHAR_VOCAB = len(dataset.char_index.items())
+    gamma = [0.3, 0.5]
+    #
+
+    for g in gamma:
+        cfg.LM_GAMMA = g
+        print("LSTM + LM + CHAR_INPUT; g={0}".format(g))
+        test_ev = single_run(dataset, emb_mat, i, "LSTM_LM_CHAR_INPUT", overwrite=False)
+        i += 1
+
     # LSTM + SOFTMAX + LM + CHAR + Featv1
 
-    # cfg.CHAR_LEVEL = "Input"
-    # cfg.CHAR_VOCAB = len(dataset.char_index.items())
-    # cfg.FEATURE_SIZE = dataset.train[0].F.shape[1]
-    # cfg.FEATURE_LEVEL = "v1"
-    # lrs = [0.3]
-    # gamma = [0.5]
-    # l2_reg = [i/10000 for i in range(1, 10)]
-    #
-    # for l2 in l2_reg:
-    #     for lr in lrs:
-    #         for g in gamma:
-    #             cfg.LEARNING_RATE = lr
-    #             cfg.LM_GAMMA = g
-    #             cfg.FEAT_L2_REG = l2
-    #             s = "LSTM + LM + CHAR_INPUT + Featv1; lr={0}; g={1}; l2={2}".\
-    #                 format(cfg.LEARNING_RATE, cfg.LM_GAMMA, cfg.FEAT_L2_REG)
-    #             print(s)
-    #             test_ev = single_run(dataset, emb_mat, i)
-    #             test_ev.write_results(cfg.RESULT_FILE, text=s)
-    #             i += 1
+    cfg.CHAR_LEVEL = "Input"
+    cfg.CHAR_VOCAB = len(dataset.char_index.items())
+    cfg.FEATURE_SIZE = dataset.train[0].F.shape[1]
+    cfg.FEATURE_LEVEL = "v1"
+    lrs = [0.3]
+    gamma = [0.1, 0.3, 0.5]
+
+    for g in gamma:
+        cfg.LM_GAMMA = g
+        s = "LSTM + LM + CHAR_INPUT + Featv1; g={0}".format(cfg.LM_GAMMA)
+        print(s)
+        test_ev = single_run(dataset, emb_mat, i, "LSTM_LM_CHAR_INPUT_Fv1", overwrite=False)
+        i += 1

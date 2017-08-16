@@ -20,7 +20,7 @@ PF_EMBEDDING_DIM = 5
 
 NUMBER_OF_VALIDATION_SAMPLES = 200
 
-LEARNING_RATE = 0.3
+LEARNING_RATE = 1
 
 LSTM_HIDDEN_SIZE = 200
 
@@ -41,7 +41,7 @@ OOV_FILEPATH = os.path.join(CURRENT_DIR, "preprocessing/oov.txt")
 
 MODEL_SAVE_FILEPATH = os.path.join(CURRENT_DIR, "save.m")
 
-FILTER_ALL_NEG = True
+FILTER_ALL_NEG = False
 
 MAX_EPOCH_IMP = 20
 
@@ -73,7 +73,7 @@ SENT_END = "</s>"
 
 UNK = "<unk>"
 
-RANDOM_TRAIN = False
+RANDOM_TRAIN = True
 
 PRED_BRAT_FULL = "brat_results/pred/brat_out"
 TRUE_BRAT_FULL = "brat_results/true/brat_out"
@@ -87,8 +87,13 @@ BEST_MODEL_SELECTOR = "dev_conll_f"
 
 RESULT_FILE = os.path.join(CURRENT_DIR, "test_results.txt")
 
+TEXT_RESULT_DIR = os.path.join(CURRENT_DIR, "text_results")
+
+CSV_RESULT_DIR = os.path.join(CURRENT_DIR, "csv_results")
+
 DB_WITHOUT_FEATURES = os.path.join(CURRENT_DIR, "dataset_without_features.p")
 DB_WITH_FEATURES = os.path.join(CURRENT_DIR, "dataset_with_features.p")
+DB_NO_NEG_WITH_FEATURES = os.path.join(CURRENT_DIR, "dataset_no_negative_sents_with_features.p")
 
 # Number of windows to use during training (offset is COUNT_WINDOWS_TEST, i.e. test windows will
 # be loaded first)

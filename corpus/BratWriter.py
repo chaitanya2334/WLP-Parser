@@ -68,7 +68,6 @@ class BratFile(object):
         pred = self.convert_2_text(pred)
 
         for sent_words, sent_true, sent_pred, pno in zip(words, true, pred, p_list):
-            print(sent_words)
             assert len(sent_words) == len(sent_true) == len(sent_pred), \
                 "Sentence data not of equal length. " \
                 "sent_words={0}, sent_true={1}, sent_pred={2}".format(sent_words, sent_true, sent_pred)
