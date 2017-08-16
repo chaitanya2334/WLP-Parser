@@ -1,9 +1,12 @@
+import csv
 import time
 import collections
 import numpy as np
 import sys
 
 import conlleval
+import os
+import config as cfg
 
 
 class Evaluator(object):
@@ -107,8 +110,39 @@ class Evaluator(object):
             sys.stderr.write("ERROR: Cost is NaN or Inf. Exiting.\n")
             exit()
 
-    def write_results(self, filename, text, spec='a'):
+    def config_desc(self):
+
+        s = "Configuration:\n"
+        s += "Learning Rate: {0}\n".format(cfg.LEARNING_RATE)
+        s += "Gamma (will be non zero if LM is being used): {0}\n".format(cfg.LM_GAMMA)
+        s += "Character Level embedding type: {0}\n".format(cfg.CHAR_LEVEL)
+        return s
+
+    def write_results(self, filename, text, overwrite):
+        if overwrite:
+            spec = 'w'
+        else:
+            spec = 'a'
+
         with open(filename, spec, encoding='utf-8') as f:
             f.write(text + "\n")
+            f.write(self.config_desc())
             for key in self.results:
                 f.write(key + ": " + str(self.results[key]) + "\n")
+
+    def write_csv_results(self, csv_filepath, title, overwrite=True):
+        # if file doesnt exist or is empty or you want to overwrite the file, write the headers.
+        if not os.path.isfile(csv_filepath) or os.stat(csv_filepath).st_size == 0 or overwrite:
+            with open(csv_filepath, 'w') as csvfile:
+                fieldnames = ['Method', 'Accuracy', 'Precision', 'Recall', 'F1-Score']
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+
+        with open(csv_filepath, 'a') as csvfile:
+            fieldnames = ['Method', 'Accuracy', 'Precision', 'Recall', 'F1-Score']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writerow({'Method': title,
+                             'Accuracy': self.results[self.name + "_accuracy"],
+                             'Precision': self.results[self.name + "_conll_p"],
+                             'Recall': self.results[self.name + "_conll_r"],
+                             'F1-Score': self.results[self.name + '_conll_f']})
