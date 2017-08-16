@@ -118,6 +118,8 @@ FEATURE_LEVEL = "None"
 
 FEAT_L2_REG = 0.3
 
+SCRIPT_DIR = os.path.join(CURRENT_DIR, "scripts")
+
 def ver_print(string, value):
     if VERBOSE:
         print(string + ':\n {0}'.format(value))
