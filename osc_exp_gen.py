@@ -5,7 +5,6 @@ def template(name, ch_lvl, f_lvl, g, time):
     s = "#PBS -N " + name + "\n"
     s += "#PBS -l walltime=" + time + "\n"
     s += "#PBS -l nodes=1:ppn=28\n"
-    s += "#PBS -j abe\n"
     s += "source ~/.init_workspace_owens\n"
     s += "cd Documents/action-sequence-labeler\n"
     s += "python -m main --lm_gamma " + str(g) + " --char_level " + ch_lvl + " --feature_level " + f_lvl + " " + name
