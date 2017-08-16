@@ -9,7 +9,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import re
 import sys
-from itertools import chain
+from itertools import chain, tee
 
 import copy
 from nltk import WordNetLemmatizer
@@ -87,8 +87,8 @@ def create_features(articles, verbose=True):
         # EntityTypeFeatures(),
         # NearestEntityFeatures(),
         LemmatizerFeatures(pos),
-        DepGraphFeatures(dep_p),
-        DepTypeFeatures(dep_p),
+        DepGraphFeatures(),
+        DepTypeFeatures(),
         # BrownClusterFeature(brown),
         # BrownClusterBitsFeature(brown, brown_bit_series),
         BigramFeature(ug_all_top),
@@ -164,8 +164,9 @@ class NearestEntityFeatures(object):
 
 
 class DepTypeFeatures(object):
-    def __init__(self, dep_parser):
-        self.dep_parser = dep_parser
+    def __init__(self):
+        # self.dep_parser = dep_parser
+        pass
 
     @staticmethod
     def get_rel(triples, word):
@@ -177,7 +178,9 @@ class DepTypeFeatures(object):
         return rels
 
     def convert_window(self, window):
-        dep_graph = self.dependency_parse(window)
+        window.dep, dep_graph = tee(window.dep)
+        # dep_graph = self.dependency_parse(window)
+
         t = list(next(dep_graph).triples())
 
         result = []
@@ -206,8 +209,9 @@ class DepTypeFeatures(object):
 
 
 class DepGraphFeatures(object):
-    def __init__(self, dep_parser):
-        self.dep_parser = dep_parser
+    def __init__(self):
+        # self.dep_parser = dep_parser
+        pass
 
     @staticmethod
     def get_deps(triples, word):
@@ -227,7 +231,8 @@ class DepGraphFeatures(object):
         return gov
 
     def convert_window(self, window):
-        dep_graph = self.dependency_parse(window)
+        window.dep, dep_graph = tee(window.dep)
+        # dep_graph = self.dependency_parse(window)
         t = list(next(dep_graph).triples())
 
         result = []

@@ -3,7 +3,7 @@ import os
 import random
 from collections import namedtuple
 
-
+from nltk.parse.stanford import StanfordDependencyParser
 from sklearn.preprocessing import OneHotEncoder
 from tabulate import tabulate
 
@@ -11,11 +11,9 @@ from tqdm import tqdm
 
 import features_config as feat_cfg
 
-
 import re
 
 from torch.utils import data
-
 
 import config as cfg
 from preprocessing.feature_engineering import features
@@ -52,7 +50,7 @@ class CustomDataset(data.Dataset):
         c = self.__prep_char_idx_seq(self.sents[item])
         y = self.to_categorical(self.labels[item], bio=True)
 
-        f = self.f_df[self.cut_list[item]:self.cut_list[item+1]]
+        f = self.f_df[self.cut_list[item]:self.cut_list[item + 1]]
         f = self.enc.transform(f.as_matrix()).todense()
         p = self.pnos[item]
         assert len(x) == len(f) + 2, (len(x), len(f))
@@ -116,7 +114,7 @@ class CustomDataset(data.Dataset):
 
 
 class Manager(object):
-    def __init__(self, word_index=None, char_index=None, shuffle_once=True):
+    def __init__(self, load_feat=False, word_index=None, char_index=None, shuffle_once=True):
 
         self.word_index = word_index
         self.char_index = char_index
@@ -124,29 +122,31 @@ class Manager(object):
         self.total = 0
         self.load_protofiles(cfg.ARTICLES_FOLDERPATH)
         self.tag_idx = {'B': 0, 'I': 1, 'O': 2}
-        self.sents, self.labels, self.pnos = self.__gen_data(replace_digit=True, to_filter=True)
+        self.sents, self.labels, self.pnos = self.__gen_data(replace_digit=True, to_filter=cfg.FILTER_ALL_NEG)
         self.total = len(self.sents)
         self.train = None
         self.dev = None
         self.test = None
-        print("Loading POS ...")
-        self.pos = self.__gen_pos(self.sents)
-        self.feat_list = features.create_features(self.articles)
-        print("Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
+        if load_feat:
+            print("Loading POS ...")
+            self.pos = self.__gen_pos(self.sents)
+            self.feat_list = features.create_features(self.articles)
+            print("Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
 
-        self.enc, self.f_df, self.cut_list = self.__gen_all_features(self.sents, self.labels, self.pnos, self.pos)
-        # print(tabulate(self.f_df, headers='keys', tablefmt='psql'))
+            self.enc, self.f_df, self.cut_list = self.__gen_all_features(self.sents, self.labels, self.pnos, self.pos)
+
 
     def gen_data(self, per):
         ntrain, ndev, ntest = self.__split_dataset(per, self.total)
 
-        self.train = CustomDataset(self.sents[0:ntrain], self.labels[0:ntrain], self.cut_list[0:ntrain+1], self.enc,
+        self.train = CustomDataset(self.sents[0:ntrain], self.labels[0:ntrain], self.cut_list[0:ntrain + 1], self.enc,
                                    self.f_df, self.pnos[0:ntrain],
                                    self.char_index, self.word_index)
-        self.dev = CustomDataset(self.sents[ntrain:ndev], self.labels[ntrain:ndev], self.cut_list[ntrain:ndev+1],
+        self.dev = CustomDataset(self.sents[ntrain:ndev], self.labels[ntrain:ndev], self.cut_list[ntrain:ndev + 1],
                                  self.enc, self.f_df, self.pnos[ntrain:ndev],
                                  self.char_index, self.word_index)
-        self.test = CustomDataset(self.sents[ndev:ntest], self.labels[ndev:ntest], self.cut_list[ndev:ntest+1], self.enc,
+        self.test = CustomDataset(self.sents[ndev:ntest], self.labels[ndev:ntest], self.cut_list[ndev:ntest + 1],
+                                  self.enc,
                                   self.f_df, self.pnos[ndev:ntest],
                                   self.char_index, self.word_index)
 
@@ -156,13 +156,17 @@ class Manager(object):
         mega_df = pd.DataFrame()
         i = 0
         cut_list = [0]
-        count = 0
-        for sent, label, pno, p in tqdm(zip(sents, labels, pnos, pos), desc="Collecting features", total=len(sents)):
-            df = self.__gen_single_feature(sent, label, pno, p)
-            mega_df = pd.concat([mega_df, df])
+        mega_list = []
+        print("Loading Dep Graphs ...")
+        deps = self.__gen_dep(sents, pos)
+        for x, (sent, label, pno, p) in tqdm(enumerate(zip(sents, labels, pnos, pos)), desc="Collecting features",
+                                             total=len(sents)):
+            feature_dicts = self.__gen_single_feature(sent, label, pno, p, deps[x])
+            mega_list.extend(feature_dicts)
+            # mega_df = pd.concat([mega_df, df])
             cut_list.append(i + len(sent))
             i += len(sent)
-
+        mega_df = pd.DataFrame(mega_list)
         mega_df = mega_df.fillna(0)
         print(tabulate(mega_df, headers='keys', tablefmt='psql'))
         char_cols = mega_df.dtypes.pipe(lambda x: x[x == 'object']).index
@@ -176,6 +180,7 @@ class Manager(object):
 
         return enc, mega_df, cut_list
 
+    # returns pos tags for every word in each sent in `sents`.
     @staticmethod
     def __gen_pos(sents):
         pos = PosTagger(feat_cfg.STANFORD_POS_JAR_FILEPATH, feat_cfg.STANFORD_MODEL_FILEPATH,
@@ -183,18 +188,29 @@ class Manager(object):
 
         return pos.tag_sents(sents)
 
-    def __gen_single_feature(self, sent, labels, pno, pos):
+    @staticmethod
+    def __gen_dep(sents, pos=None):
+        dep = StanfordDependencyParser(path_to_jar=feat_cfg.STANFORD_PARSER_JAR,
+                                       path_to_models_jar=feat_cfg.STANFORD_PARSER_MODEL_JAR, java_options="-mx3000m")
+        if pos:
+            # adding pos data to dep parser speeds up dep generation even further
+            i = [sent_dep for sent_dep in dep.tagged_parse_sents(pos)]
+            return i
+        else:
+            return dep.parse_sents(sents)
 
-        window = Window(sent, labels, pno, pos)
+    def __gen_single_feature(self, sent, labels, pno, pos, dep):
+
+        window = Window(sent, labels, pno, pos, dep)
         window.apply_features(self.feat_list)
         feature_dicts = []
         for word_idx in range(len(window.tokens)):
             fvl = window.get_feature_values_list(word_idx, feat_cfg.SKIPCHAIN_LEFT, feat_cfg.SKIPCHAIN_RIGHT)
             feature_dicts.append(fvl)
 
-        df = pd.DataFrame(feature_dicts)
+        #df = pd.DataFrame(feature_dicts)
 
-        return df
+        return feature_dicts
 
     def load_filenames(self, dir_path):
         filenames = self.__from_dir(dir_path, extension="ann")

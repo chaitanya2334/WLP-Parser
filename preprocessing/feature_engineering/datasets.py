@@ -309,7 +309,7 @@ class Article(object):
 class Window:
     """Encapsulates a small window of text/tokens."""
 
-    def __init__(self, sent, labels, pno, pos):
+    def __init__(self, sent, labels, pno, pos, dep):
         """Initialize a new Window object.
 
         Args:
@@ -320,6 +320,7 @@ class Window:
         self.tokens = [Token(word, label) for word, label in zip(sent, labels)]
         self.pno = pno
         self.pos = pos
+        self.dep = dep
 
     def get_words(self):
 

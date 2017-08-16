@@ -32,7 +32,7 @@ class PosTagger(object):
 
         self.tagger = nltk.tag.stanford.StanfordPOSTagger(stanford_model_filepath,
                                                           stanford_postagger_jar_filepath,
-                                                          encoding="utf-8")
+                                                          encoding="utf-8", java_options='-mx3000m')
 
         self.cache_synch_prob = 2 # in percent, 1 to 100
         self.cache_filepath = cache_filepath
@@ -81,7 +81,8 @@ class PosTagger(object):
 
         return _idx, _res
 
-    def rebuild(self, _idx, _res):
+    @staticmethod
+    def rebuild(_idx, _res):
         ans = [[] for _ in range(max(_idx)+1)]
 
         for i, x in zip(_idx, _res):
@@ -91,8 +92,8 @@ class PosTagger(object):
 
     def tag_sents(self, sents):
         ret = []
-        for i, x in tqdm(enumerate(self.batch(sents, 1000)), desc="Loading POS", total=ceil(len(sents)/1000)):
-            idx, windows = self.chunkify(x, max=26)
+        for i, x in tqdm(enumerate(self.batch(sents, 4000)), desc="Loading POS", total=ceil(len(sents)/4000)):
+            idx, windows = self.chunkify(x, max=200)
             res = self.tagger.tag_sents(windows)
             res = self.rebuild(idx, res)
 
