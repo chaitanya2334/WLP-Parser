@@ -1,3 +1,4 @@
+import argparse
 import random
 import os
 
@@ -178,7 +179,7 @@ def test(name, data, model):
         else:
             lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])), sample.C,
                                                 Variable(torch.from_numpy(f)).float().unsqueeze(
-                                                                   dim=0).cuda())
+                                                    dim=0).cuda())
 
         # remove start and stop tags
         seq_out = seq_out[1:-1]
@@ -257,7 +258,6 @@ def single_run(corpus, embedding_matrix, index, title, overwrite, only_test=Fals
     else:
         the_model = torch.load(cfg.MODEL_SAVE_FILEPATH)
 
-
     print("Testing ...")
     test_loader = DataLoader(corpus.test, batch_size=1, num_workers=8, collate_fn=lambda x: x[0])
     test_eval, pred_list, true_list = test("test", test_loader, the_model)
@@ -282,56 +282,47 @@ def single_run(corpus, embedding_matrix, index, title, overwrite, only_test=Fals
     return test_eval
 
 
+def build_cmd_parser():
+    parser = argparse.ArgumentParser(description='Action Sequence Labeler.')
+    parser.add_argument('--lm_gamma', metavar='G', type=float, required=True,
+                        help='If Language model is to be used, gamma is a gating variable that controls '
+                             'how important LM should be. A float number between (0 - 1)')
+
+    parser.add_argument('--char_level', metavar='String', required=True, choices=["None", "Input", "Attention"],
+                        help='The char level embedding to add on top of the bi LSTM.')
+
+    parser.add_argument('--feature_level', metavar='String', required=True, choices=["None", "v1"],
+                        help='The feature level to be added on top of the bi LSTM.')
+
+    parser.add_argument("filename", metavar="String",
+                        help="This is the filename (without ext) "
+                             "that will be given to the file where all the results will be stored ")
+
+    args = parser.parse_args()
+    return args
+
+
+def current_config():
+    s = "LM_GAMMA = " + str(cfg.LM_GAMMA) + "\n"
+    s += "CHAR_LEVEL = " + cfg.CHAR_LEVEL + "\n"
+    s += "FEATURE_LEVEL = " + cfg.FEATURE_LEVEL + "\n"
+    return s
+
 if __name__ == '__main__':
-
+    args = build_cmd_parser()
     dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_FEATURES)
-    i = 10
-    # touch(cfg.RESULT_FILE)
-    # LSTM
-    #cfg.LM_GAMMA = 0
-    #cfg.CHAR_LEVEL = None
-    #i = 0
-    #print("LSTM")
-    #test_ev = single_run(dataset, emb_mat, i, "LSTM", overwrite=False, only_test=True)
-    #i += 1
 
-    #
-    # LSTM + LM
-    # cfg.CHAR_LEVEL = None
-    #
-    # gamma = [0.3, 0.5]
-    # #
-    # for g in gamma:
-    #     cfg.LM_GAMMA = g
-    #     print("LSTM + LM; g={0}".format(g))
-    #     test_ev = single_run(dataset, emb_mat, i, "LSTM_LM g={0}".format(g), overwrite=False)
-    #     i += 1
-    #
-    # LSTM + LM + CHAR_INPUT
+    cfg.CHAR_LEVEL = args.char_level
+    cfg.FEATURE_LEVEL = args.feature_level
+    cfg.LM_GAMMA = args.lm_gamma
 
-    cfg.CHAR_LEVEL = "Input"
-    cfg.CHAR_VOCAB = len(dataset.char_index.items())
-    gamma = [0.3, 0.5]
-    #
+    i = 0
 
-    for g in gamma:
-        cfg.LM_GAMMA = g
-        print("LSTM + LM + CHAR_INPUT; g={0}".format(g))
-        test_ev = single_run(dataset, emb_mat, i, "LSTM_LM_CHAR_INPUT", overwrite=False)
-        i += 1
+    if cfg.CHAR_LEVEL != "None":
+        cfg.CHAR_VOCAB = len(dataset.char_index.items())
 
-    # LSTM + SOFTMAX + LM + CHAR + Featv1
+    if cfg.FEATURE_LEVEL == "v1":
+        cfg.FEATURE_SIZE = dataset.train[0].F.shape[1]
 
-    cfg.CHAR_LEVEL = "Input"
-    cfg.CHAR_VOCAB = len(dataset.char_index.items())
-    cfg.FEATURE_SIZE = dataset.train[0].F.shape[1]
-    cfg.FEATURE_LEVEL = "v1"
-    lrs = [0.3]
-    gamma = [0.1, 0.3, 0.5]
-
-    for g in gamma:
-        cfg.LM_GAMMA = g
-        s = "LSTM + LM + CHAR_INPUT + Featv1; g={0}".format(cfg.LM_GAMMA)
-        print(s)
-        test_ev = single_run(dataset, emb_mat, i, "LSTM_LM_CHAR_INPUT_Fv1", overwrite=False)
-        i += 1
+    print(current_config())
+    test_ev = single_run(dataset, emb_mat, i, args.filename, overwrite=False)
