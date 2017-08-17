@@ -23,7 +23,7 @@ if __name__ == '__main__':
     gammas = [x / 10 for x in range(10)]
     ch_lvls = ["None", "Input", "Attention"]
     f_lvls = ["None", "v1"]
-    title = "LSTM"
+    title = "LSTM_200"
     for g in gammas:
         for ch in ch_lvls:
             for f in f_lvls:
