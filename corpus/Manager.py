@@ -120,7 +120,7 @@ class Manager(object):
         self.char_index = char_index
         self.articles = None
         self.total = 0
-        self.load_protofiles(cfg.ARTICLES_FOLDERPATH)
+        self.load_protofiles(cfg.ARTICLES_FOLDERPATH, shuffle_once=shuffle_once)
         self.tag_idx = {'B': 0, 'I': 1, 'O': 2}
         self.sents, self.labels, self.pnos = self.__gen_data(replace_digit=True, to_filter=cfg.FILTER_ALL_NEG)
         self.total = len(self.sents)

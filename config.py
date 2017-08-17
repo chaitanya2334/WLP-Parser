@@ -10,7 +10,7 @@ CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 #   John/PER Doe/PER did something yesterday. Then he did something else.
 #   Washington/LOC D.C./LOC is the capital of the U.S.
 #   ....
-ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "simple_input")
+ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "200_protocols")
 
 PUBMED_AND_PMC_W2V_BIN = os.path.join(CURRENT_DIR, "preprocessing/PubMed-and-PMC-w2v.bin")
 
@@ -118,7 +118,9 @@ FEATURE_LEVEL = "None"
 
 FEAT_L2_REG = 0.3
 
-SCRIPT_DIR = os.path.join(CURRENT_DIR, "scripts/jobs")
+SCRIPT_DIR = os.path.join(CURRENT_DIR, "scripts/jobs_200")
+
+DB_200_WITH_FEATURES = os.path.join(CURRENT_DIR, "200_dataset_with_features.p")
 
 def ver_print(string, value):
     if VERBOSE:

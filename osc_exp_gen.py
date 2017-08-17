@@ -7,7 +7,7 @@ def template(name, ch_lvl, f_lvl, g, time):
     s += "#PBS -l nodes=1:ppn=28:gpus=1\n"
     s += "source ~/.init_workspace_owens\n"
     s += "cd Documents/action-sequence-labeler\n"
-    s += "python -m main --lm_gamma " + str(g) + " --char_level " + ch_lvl + " --feature_level " + f_lvl + " " + name
+    s += "python -m main_200 --lm_gamma " + str(g) + " --char_level " + ch_lvl + " --feature_level " + f_lvl + " " + name
 
     return s
 
