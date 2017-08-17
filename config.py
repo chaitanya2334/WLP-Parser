@@ -39,7 +39,7 @@ CATEGORIES = 3
 
 OOV_FILEPATH = os.path.join(CURRENT_DIR, "preprocessing/oov.txt")
 
-MODEL_SAVE_FILEPATH = os.path.join(CURRENT_DIR, "save.m")
+MODEL_SAVE_DIR = os.path.join(CURRENT_DIR, "saved_models")
 
 FILTER_ALL_NEG = False
 

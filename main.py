@@ -101,7 +101,7 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
     return evaluator, model
 
 
-def build_model(train_dataset, dev_dataset, embedding_matrix):
+def build_model(train_dataset, dev_dataset, embedding_matrix, model_save_path):
     # init model
     model = SeqNet(embedding_matrix, isCrossEnt=False, char_level=cfg.CHAR_LEVEL, imp_feat=cfg.FEATURE_LEVEL)
 
@@ -149,7 +149,7 @@ def build_model(train_dataset, dev_dataset, embedding_matrix):
         if epoch == 0 or (dev_eval.results[cfg.BEST_MODEL_SELECTOR] > best_res_val):
             best_epoch = epoch
             best_res_val = dev_eval.results[cfg.BEST_MODEL_SELECTOR]
-            torch.save(model, cfg.MODEL_SAVE_FILEPATH)
+            torch.save(model, model_save_path)
 
         print("current dev score: {0}".format(dev_eval.results[cfg.BEST_MODEL_SELECTOR]))
         print("best dev score: {0}".format(best_res_val))
@@ -159,7 +159,7 @@ def build_model(train_dataset, dev_dataset, embedding_matrix):
         if 0 < cfg.MAX_EPOCH_IMP <= (epoch - best_epoch):
             break
     print("Loading Best Model ...")
-    model = torch.load(cfg.MODEL_SAVE_FILEPATH)
+    model = torch.load(model_save_path)
     return model
 
 
@@ -253,10 +253,11 @@ def dataset_prep(loadfile=None, savefile=None):
 
 
 def single_run(corpus, embedding_matrix, index, title, overwrite, only_test=False):
+    model_save_path = os.path.join(cfg.MODEL_SAVE_DIR, title + ".m")
     if not only_test:
-        the_model = build_model(corpus.train, corpus.dev, embedding_matrix)
+        the_model = build_model(corpus.train, corpus.dev, embedding_matrix, model_save_path)
     else:
-        the_model = torch.load(cfg.MODEL_SAVE_FILEPATH)
+        the_model = torch.load(model_save_path)
 
     print("Testing ...")
     test_loader = DataLoader(corpus.test, batch_size=1, num_workers=8, collate_fn=lambda x: x[0])
