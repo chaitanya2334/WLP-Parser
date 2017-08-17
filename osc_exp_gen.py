@@ -7,7 +7,7 @@ def template(name, ch_lvl, f_lvl, g, time):
     s += "#PBS -l nodes=1:ppn=28:gpus=1\n"
     s += "source ~/.init_workspace_owens\n"
     s += "cd Documents/action-sequence-labeler\n"
-    s += "python -m main_200 --lm_gamma " + str(g) + " --char_level " + ch_lvl + " --feature_level " + f_lvl + " " + name
+    s += "python -m main --lm_gamma " + str(g) + " --char_level " + ch_lvl + " --feature_level " + f_lvl + " " + name
 
     return s
 
@@ -18,12 +18,12 @@ def write_file(filename, s):
 
 
 if __name__ == '__main__':
-    time = "10:00:00"
+    time = "20:00:00"
 
     gammas = [x / 10 for x in range(10)]
     ch_lvls = ["None", "Input", "Attention"]
     f_lvls = ["None", "v1"]
-    title = "LSTM_200"
+    title = "LSTM_SHUFFLE"
     for g in gammas:
         for ch in ch_lvls:
             for f in f_lvls:
