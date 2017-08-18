@@ -18,7 +18,7 @@ def write_file(filename, s):
 
 
 if __name__ == '__main__':
-    time = "20:00:00"
+    time = "40:00:00"
 
     gammas = [x / 10 for x in range(10)]
     ch_lvls = ["None", "Input", "Attention"]

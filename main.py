@@ -133,13 +133,13 @@ def build_model(train_dataset, dev_dataset, embedding_matrix, model_save_path):
 
         random.seed(epoch)
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=cfg.RANDOM_TRAIN,
-                                  num_workers=8, collate_fn=lambda x: x[0])
+                                  num_workers=28, collate_fn=lambda x: x[0])
 
         train_eval, model = train_a_epoch("train", train_loader, model, optimizer, seq_criterion,
                                           lm_f_criterion, lm_b_criterion, att_loss, cfg.LM_GAMMA)
         train_eval.print_results()
 
-        dev_loader = DataLoader(dev_dataset, batch_size=1, num_workers=8, collate_fn=lambda x: x[0])
+        dev_loader = DataLoader(dev_dataset, batch_size=1, num_workers=28, collate_fn=lambda x: x[0])
 
         dev_eval, _, _ = test("dev", dev_loader, model)
 
@@ -260,7 +260,7 @@ def single_run(corpus, embedding_matrix, index, title, overwrite, only_test=Fals
         the_model = torch.load(model_save_path)
 
     print("Testing ...")
-    test_loader = DataLoader(corpus.test, batch_size=1, num_workers=8, collate_fn=lambda x: x[0])
+    test_loader = DataLoader(corpus.test, batch_size=1, num_workers=28, collate_fn=lambda x: x[0])
     test_eval, pred_list, true_list = test("test", test_loader, the_model)
 
     print("Writing Brat File ...")
