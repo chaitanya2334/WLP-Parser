@@ -1,5 +1,6 @@
+import argparse
 import os
-import config as cfg
+
 
 def template(name, ch_lvl, f_lvl, g, time):
     s = "#PBS -N " + name + "\n"
@@ -18,16 +19,31 @@ def write_file(filename, s):
 
 
 if __name__ == '__main__':
-    time = "40:00:00"
+
+    parser = argparse.ArgumentParser(description='Generate OSC jobs.')
+
+    parser.add_argument('title',
+                        help="The subscript attached to every job's file name")
+
+    parser.add_argument('--time', '-t', metavar='t', required=True,
+                        help='Wall time')
+
+    parser.add_argument('--job_dir', '-j', metavar='DIR', required=True,
+                        help='Path to job directory where all the generated jobs will be saved')
+
+    args = parser.parse_args()
+    time = args.time
+
+    script_dir = args.job_dir
 
     gammas = [x / 10 for x in range(10)]
     ch_lvls = ["None", "Input", "Attention"]
     f_lvls = ["None", "v1"]
-    title = "LSTM_SHUFFLE"
+    title = args.title
     for g in gammas:
         for ch in ch_lvls:
             for f in f_lvls:
                 name = title + "_G_" + str(g) + "_CH_" + ch + "_F_" + f
                 s = template(name, ch, f, g, time)
-                file_path = os.path.join(cfg.SCRIPT_DIR, name + ".job")
+                file_path = os.path.join(script_dir, name + ".job")
                 write_file(file_path, s)
