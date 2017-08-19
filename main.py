@@ -264,8 +264,8 @@ def single_run(corpus, embedding_matrix, index, title, overwrite, only_test=Fals
     test_eval, pred_list, true_list = test("test", test_loader, the_model)
 
     print("Writing Brat File ...")
-    bratfile_full = BratFile(cfg.PRED_BRAT_FULL + str(index), cfg.TRUE_BRAT_FULL + str(index))
-    bratfile_inc = BratFile(cfg.PRED_BRAT_INC + str(index), cfg.TRUE_BRAT_INC + str(index))
+    bratfile_full = BratFile(cfg.PRED_BRAT_FULL + title, cfg.TRUE_BRAT_FULL + title)
+    bratfile_inc = BratFile(cfg.PRED_BRAT_INC + title, cfg.TRUE_BRAT_INC + title)
 
     bratfile_full.from_labels([corpus.to_words(sample.X[1:-1]) for sample in corpus.test],
                               [sample.P for sample in corpus.test],
