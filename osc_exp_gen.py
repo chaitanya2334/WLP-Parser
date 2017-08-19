@@ -40,10 +40,11 @@ if __name__ == '__main__':
     ch_lvls = ["None", "Input", "Attention"]
     f_lvls = ["None", "v1"]
     title = args.title
-    for g in gammas:
-        for ch in ch_lvls:
-            for f in f_lvls:
-                name = title + "_G_" + str(g) + "_CH_" + ch + "_F_" + f
-                s = template(name, ch, f, g, time)
-                file_path = os.path.join(script_dir, name + ".job")
-                write_file(file_path, s)
+    for i in range(10):
+        for g in gammas:
+            for ch in ch_lvls:
+                for f in f_lvls:
+                    name = title + '_R_' + str(i) + "_G_" + str(g) + "_CH_" + ch + "_F_" + f
+                    s = template(name, ch, f, g, time)
+                    file_path = os.path.join(script_dir, name + ".job")
+                    write_file(file_path, s)
