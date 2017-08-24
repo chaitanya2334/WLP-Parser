@@ -69,8 +69,6 @@ def prepare_embeddings(use_norm=False, replace_digit=True, load_bin=True, suppor
 
     char_index = gen_list2id_dict(list_of_chars, insert_words=['<w>', '</w>', '<s>', '</s>'])
 
-    print(char_index)
-
     cfg.CHAR_VOCAB = len(char_index.items())
 
     if support_start_stop:

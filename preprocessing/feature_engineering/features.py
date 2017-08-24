@@ -172,7 +172,7 @@ class DepTypeFeatures(object):
     def get_rel(triples, word):
         rels = []
         for g, r, d in triples:
-            if g[0] == word:
+            if d[0] == word:
                 rels.append(r)
 
         return rels

@@ -37,28 +37,30 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=None, conll_eval=True)
 
     for sample in tqdm(data, desc=name, total=len(data)):
-        # print(list(zip(sample.X, sample.Y)))
+
         # zero the parameter gradients
         optimizer.zero_grad()
         model.zero_grad()
         model.init_state()
+
+        # padding cos features are not designed for start and end sentence tags
         f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
+
         np.set_printoptions(threshold=np.nan)
 
-        if cfg.CHAR_LEVEL == "Attention":
-            # padding cos features are not designed for start and end sentence tags
+        x_var = Variable(cuda.LongTensor([sample.X]))
+        c_var = sample.C
+        f_var = Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda()
+        pos_var = Variable(torch.from_numpy(sample.POS).cuda()).unsqueeze(dim=0)
+        rel_var = Variable(torch.from_numpy(sample.REL).cuda()).unsqueeze(dim=0)
 
-            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(Variable(cuda.LongTensor([sample.X])),
-                                                               sample.C,
-                                                               Variable(torch.from_numpy(f)).float().unsqueeze(
-                                                                   dim=0).cuda())
+        if cfg.CHAR_LEVEL == "Attention":
+            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(x_var, c_var, f_var, pos_var, rel_var)
             t = is_batch_zeros(emb.squeeze())
             char_att_loss = att_loss(emb.squeeze(), char_emb.squeeze(), t)
+
         else:
-            # padding cos features are not designed for start and end sentence tags
-            lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])),
-                                                sample.C,
-                                                Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda())
+            lm_f_out, lm_b_out, seq_out = model(x_var, c_var, f_var, pos_var, rel_var)
 
         cfg.ver_print("lm_f_out", lm_f_out)
         cfg.ver_print("lm_b_out", lm_b_out)
@@ -172,14 +174,17 @@ def test(name, data, model):
     for sample in tqdm(data, desc=name, total=len(data)):
         f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
         np.set_printoptions(threshold=np.nan)
+
+        x_var = Variable(cuda.LongTensor([sample.X]))
+        c_var = sample.C
+        f_var = Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda()
+        pos_var = Variable(torch.from_numpy(sample.POS).cuda()).unsqueeze(dim=0)
+        rel_var = Variable(torch.from_numpy(sample.REL).cuda()).unsqueeze(dim=0)
+
         if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(Variable(cuda.LongTensor([sample.X])), sample.C,
-                                                               Variable(torch.from_numpy(f)).float().unsqueeze(
-                                                                   dim=0).cuda())
+            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(x_var, c_var, f_var, pos_var, rel_var)
         else:
-            lm_f_out, lm_b_out, seq_out = model(Variable(cuda.LongTensor([sample.X])), sample.C,
-                                                Variable(torch.from_numpy(f)).float().unsqueeze(
-                                                    dim=0).cuda())
+            lm_f_out, lm_b_out, seq_out = model(x_var, c_var, f_var, pos_var, rel_var)
 
         # remove start and stop tags
         seq_out = seq_out[1:-1]
@@ -285,6 +290,9 @@ def single_run(corpus, embedding_matrix, index, title, overwrite, only_test=Fals
 
 def build_cmd_parser():
     parser = argparse.ArgumentParser(description='Action Sequence Labeler.')
+    parser.add_argument('--train_word_emb', dest='train_word_emb', action='store_true')
+    parser.add_argument('--no-train_word_emb', dest='train_word_emb', action='store_false')
+    parser.set_defaults(train_word_emb=True)
     parser.add_argument('--lm_gamma', metavar='G', type=float, required=True,
                         help='If Language model is to be used, gamma is a gating variable that controls '
                              'how important LM should be. A float number between (0 - 1)')
@@ -292,7 +300,7 @@ def build_cmd_parser():
     parser.add_argument('--char_level', metavar='String', required=True, choices=["None", "Input", "Attention"],
                         help='The char level embedding to add on top of the bi LSTM.')
 
-    parser.add_argument('--feature_level', metavar='String', required=True, choices=["None", "v1"],
+    parser.add_argument('--feature_level', metavar='String', required=True, choices=["None", "v1", "v2"],
                         help='The feature level to be added on top of the bi LSTM.')
 
     parser.add_argument("filename", metavar="String",
@@ -304,15 +312,20 @@ def build_cmd_parser():
 
 
 def current_config():
-    s = "LM_GAMMA = " + str(cfg.LM_GAMMA) + "\n"
+    s = "TRAIN_WORD_EMB = " + str(cfg.TRAIN_WORD_EMB) + "\n"
+    s += "LM_GAMMA = " + str(cfg.LM_GAMMA) + "\n"
     s += "CHAR_LEVEL = " + cfg.CHAR_LEVEL + "\n"
     s += "FEATURE_LEVEL = " + cfg.FEATURE_LEVEL + "\n"
+
     return s
 
 if __name__ == '__main__':
     args = build_cmd_parser()
-    dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_FEATURES)
+    dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_POS)
+    print(dataset.pos_ids)
+    print(dataset.rel_ids)
 
+    cfg.TRAIN_WORD_EMB = args.train_word_emb
     cfg.CHAR_LEVEL = args.char_level
     cfg.FEATURE_LEVEL = args.feature_level
     cfg.LM_GAMMA = args.lm_gamma
@@ -324,6 +337,10 @@ if __name__ == '__main__':
 
     if cfg.FEATURE_LEVEL == "v1":
         cfg.FEATURE_SIZE = dataset.train[0].F.shape[1]
+
+    if cfg.FEATURE_LEVEL == "v2":
+        cfg.POS_VOCAB = len(dataset.pos_ids)
+        cfg.REL_VOCAB = len(dataset.rel_ids)
 
     print(current_config())
     test_ev = single_run(dataset, emb_mat, i, args.filename, overwrite=False)

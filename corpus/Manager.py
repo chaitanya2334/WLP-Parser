@@ -26,14 +26,16 @@ from corpus.ProtoFile import ProtoFile
 import itertools
 from builtins import any as b_any
 
+import numpy as np
+
 # TODO fix corpus folder's structure and then improve this class
 from corpus.TextFile import TextFile
 
-Data = namedtuple('Data', ['X', 'C', 'Y', 'P', 'F'])
+Data = namedtuple('Data', ['X', 'C', 'Y', 'P', 'F', 'POS', 'REL'])
 
 
 class CustomDataset(data.Dataset):
-    def __init__(self, sents, labels, cut_list, enc, f_df, pnos, char_index, word_index):
+    def __init__(self, sents, labels, cut_list, enc, f_df, pnos, char_index, word_index, pos_ids, rel_ids):
         self.sents = sents
         self.labels = labels
         self.cut_list = cut_list
@@ -42,6 +44,8 @@ class CustomDataset(data.Dataset):
         self.pnos = pnos
         self.char_index = char_index
         self.word_index = word_index
+        self.pos_index = pos_ids
+        self.rel_index = rel_ids
 
         self.tag_idx = {'B': 0, 'I': 1, 'O': 2}
 
@@ -51,10 +55,21 @@ class CustomDataset(data.Dataset):
         y = self.to_categorical(self.labels[item], bio=True)
 
         f = self.f_df[self.cut_list[item]:self.cut_list[item + 1]]
+        f_pos = f['0:pos'].as_matrix()
+        # add pos tag for start and end tag
+        f_pos = np.insert(f_pos, 0, self.pos_index['NULL'])
+        f_pos = np.insert(f_pos, f_pos.size, self.pos_index['NULL'])
+
+        f_rel = f['0:rel'].as_matrix()
+
+        # add rel tag for start and end tag
+        f_rel = np.insert(f_rel, 0, self.rel_index['NULL'])
+        f_rel = np.insert(f_rel, f_rel.size, self.rel_index['NULL'])
+
         f = self.enc.transform(f.as_matrix()).todense()
         p = self.pnos[item]
         assert len(x) == len(f) + 2, (len(x), len(f))
-        return Data(x, c, y, p, f)
+        return Data(x, c, y, p, f, f_pos, f_rel)
 
     def __len__(self):
         return len(self.sents)
@@ -136,19 +151,20 @@ class Manager(object):
             self.enc, self.f_df, self.cut_list = self.__gen_all_features(self.sents, self.labels, self.pnos, self.pos)
 
 
+
     def gen_data(self, per):
         ntrain, ndev, ntest = self.__split_dataset(per, self.total)
 
         self.train = CustomDataset(self.sents[0:ntrain], self.labels[0:ntrain], self.cut_list[0:ntrain + 1], self.enc,
                                    self.f_df, self.pnos[0:ntrain],
-                                   self.char_index, self.word_index)
+                                   self.char_index, self.word_index, self.pos_ids, self.rel_ids)
         self.dev = CustomDataset(self.sents[ntrain:ndev], self.labels[ntrain:ndev], self.cut_list[ntrain:ndev + 1],
                                  self.enc, self.f_df, self.pnos[ntrain:ndev],
-                                 self.char_index, self.word_index)
+                                 self.char_index, self.word_index, self.pos_ids, self.rel_ids)
         self.test = CustomDataset(self.sents[ndev:ntest], self.labels[ndev:ntest], self.cut_list[ndev:ntest + 1],
                                   self.enc,
                                   self.f_df, self.pnos[ndev:ntest],
-                                  self.char_index, self.word_index)
+                                  self.char_index, self.word_index, self.pos_ids, self.rel_ids)
 
         assert len(self.train) + len(self.dev) + len(self.test) == self.total
 
@@ -168,13 +184,24 @@ class Manager(object):
             i += len(sent)
         mega_df = pd.DataFrame(mega_list)
         mega_df = mega_df.fillna(0)
-        print(tabulate(mega_df, headers='keys', tablefmt='psql'))
+        print(tabulate(mega_df[:10], headers='keys', tablefmt='psql'))
         char_cols = mega_df.dtypes.pipe(lambda x: x[x == 'object']).index
-
+        print(char_cols)
+        unique_ids = dict.fromkeys(char_cols)
         for c in char_cols:
-            mega_df[c] = pd.factorize(mega_df[c])[0]
+            mega_df[c], unique_ids[c] = pd.factorize(mega_df[c])
 
-        print(tabulate(mega_df, headers='keys', tablefmt='psql'))
+        print(unique_ids)
+
+        pos_id_list = unique_ids['0:pos'].get_values().tolist()
+        self.pos_ids = {k: v for v, k in enumerate(pos_id_list)}
+        self.pos_ids['NULL'] = len(self.pos_ids)
+
+        rel_id_list = unique_ids['0:rel'].get_values().tolist()
+        self.rel_ids = {k: v for v, k in enumerate(rel_id_list)}
+        self.rel_ids['NULL'] = len(self.rel_ids)
+
+        print(tabulate(mega_df[:10], headers='keys', tablefmt='psql'))
         enc = OneHotEncoder()
         enc.fit(mega_df.as_matrix())
 

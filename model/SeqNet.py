@@ -28,28 +28,40 @@ class SeqNet(nn.Module):
         self.char_level = char_level
 
         # init embedding layer, with pre-trained embedding matrix : emb_mat
-        self.emb_lookup = Embedding(self.emb_mat_tensor)
+        print("word embeddings are being trained: {0}".format(cfg.TRAIN_WORD_EMB))
+        if cfg.TRAIN_WORD_EMB:
+            self.emb_lookup = nn.Embedding(self.vocab_size, self.emb_dim)
+            self.emb_lookup.weight = nn.Parameter(self.emb_mat_tensor)
+        else:
+            self.emb_lookup = Embedding(self.emb_mat_tensor)
 
         self.char_net = CharNet(cfg.CHAR_EMB_DIM, cfg.CHAR_RECURRENT_SIZE, out_size=cfg.EMBEDDING_DIM)
 
+        if imp_feat == 'v2':
+            self.pos_emb = nn.Embedding(cfg.POS_VOCAB, cfg.POS_EMB_DIM)
+            # initialize weights
+            tensor = self.__random_tensor(-0.01, 0.01, (cfg.POS_VOCAB, cfg.POS_EMB_DIM))
+            self.pos_emb.weight = nn.Parameter(tensor)
+
+            self.rel_emb = nn.Embedding(cfg.REL_VOCAB, cfg.REL_EMB_DIM)
+            # initialize weights
+            tensor = self.__random_tensor(-0.01, 0.01, (cfg.REL_VOCAB, cfg.REL_EMB_DIM))
+            self.rel_emb.weight = nn.Parameter(tensor)
+
         self.att_net = AttNet(cfg.EMBEDDING_DIM, cfg.EMBEDDING_DIM, cfg.EMBEDDING_DIM)
 
+        inp_size = self.emb_dim
+
         if self.char_level == "Input":
-            self.lstm = nn.LSTM(input_size=self.emb_dim + self.char_emb_dim, batch_first=True,
-                                num_layers=self.num_layers,
-                                hidden_size=self.hidden_size,
-                                bidirectional=True)
+            inp_size += self.char_emb_dim
 
-        elif self.char_level == "Attention":
-            self.lstm = nn.LSTM(input_size=self.emb_dim, batch_first=True,
-                                num_layers=self.num_layers,
-                                hidden_size=self.hidden_size, bidirectional=True)
+        if self.imp_feat == "v2":
+            inp_size += cfg.POS_EMB_DIM + cfg.REL_EMB_DIM
 
-        else:
-            self.lstm = nn.LSTM(input_size=self.emb_dim, batch_first=True,
-                                num_layers=self.num_layers,
-                                hidden_size=self.hidden_size,
-                                bidirectional=True)
+        self.lstm = nn.LSTM(input_size=inp_size, batch_first=True,
+                            num_layers=self.num_layers,
+                            hidden_size=self.hidden_size,
+                            bidirectional=True)
 
         if self.imp_feat == "v2":
             self.feat_net = None
@@ -71,14 +83,16 @@ class SeqNet(nn.Module):
             self.linear = nn.Linear(cfg.LSTM_OUT_SIZE,
                                     self.out_size)
 
-
-
         # self.time_linear = TimeDistributed(self.linear, batch_first=True)
-        self.hidden_state = self.init_state()
+        self.init_state()
         if not isCrossEnt:
             self.log_softmax = nn.LogSoftmax()
 
         self.isCrossEnt = isCrossEnt
+
+    @staticmethod
+    def __random_tensor(r1, r2, size):
+        return (r1 - r2) * torch.rand(size) + r2
 
     def init_state(self):
         """Get cell states and hidden states."""
@@ -89,7 +103,7 @@ class SeqNet(nn.Module):
 
         self.char_net.init_state()
 
-    def forward(self, sent_idx_seq, char_idx_seq, features):
+    def forward(self, sent_idx_seq, char_idx_seq, features, pos, rel):
         cfg.ver_print("Sent Index sequence", sent_idx_seq)
 
         seq_len = sent_idx_seq.size(1)
@@ -103,9 +117,15 @@ class SeqNet(nn.Module):
         elif self.char_level == "Attention":
             char_emb = self.char_net(char_idx_seq)
             inp = self.att_net(emb, char_emb)
-
         else:
             inp = emb
+
+        if self.imp_feat == 'v2':
+            pos_emb = self.pos_emb(pos)
+            rel_emb = self.rel_emb(rel)
+
+            inp = cat([inp, pos_emb, rel_emb], dim=2)
+
 
         # emb is now of size(1 x seq_len x EMB_DIM)
         cfg.ver_print("Embedding for the Sequence", inp)
@@ -134,9 +154,6 @@ class SeqNet(nn.Module):
 
         if self.imp_feat == "v1":
             label_out = cat([lstm_out, features], dim=2)
-        elif self.imp_feat == "v2":
-            f_out = self.feat_net(features)
-            label_out = cat([lstm_out, f_out])
         else:
             label_out = lstm_out
 

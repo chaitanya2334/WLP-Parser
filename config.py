@@ -66,6 +66,12 @@ CHAR_RECURRENT_SIZE = 200
 CHAR_VOCAB = 0
 CHAR_LEVEL = "None"
 
+POS_EMB_DIM = 50
+POS_VOCAB = None
+
+REL_EMB_DIM = 50
+REL_VOCAB = None
+
 WORD_START = "<w>"
 WORD_END = "</w>"
 SENT_START = "<s>"
@@ -81,7 +87,7 @@ TRUE_BRAT_FULL = "brat_results/true/brat_out"
 PRED_BRAT_INC = "brat_results/pred/brat_inc_out"
 TRUE_BRAT_INC = "brat_results/true/brat_inc_out"
 
-CLIP = 20
+CLIP = None
 
 BEST_MODEL_SELECTOR = "dev_conll_f"
 
@@ -94,6 +100,7 @@ CSV_RESULT_DIR = os.path.join(CURRENT_DIR, "csv_results")
 DB_WITHOUT_FEATURES = os.path.join(CURRENT_DIR, "dataset_without_features.p")
 DB_WITH_FEATURES = os.path.join(CURRENT_DIR, "dataset_with_features.p")
 DB_NO_NEG_WITH_FEATURES = os.path.join(CURRENT_DIR, "dataset_no_negative_sents_with_features.p")
+DB_WITH_POS = os.path.join(CURRENT_DIR, "dataset_with_pos.p")
 
 # Number of windows to use during training (offset is COUNT_WINDOWS_TEST, i.e. test windows will
 # be loaded first)
@@ -121,6 +128,8 @@ FEAT_L2_REG = 0.3
 SCRIPT_DIR = os.path.join(CURRENT_DIR, "scripts/jobs")
 
 DB_200_WITH_FEATURES = os.path.join(CURRENT_DIR, "200_dataset_with_features.p")
+
+TRAIN_WORD_EMB = False
 
 def ver_print(string, value):
     if VERBOSE:

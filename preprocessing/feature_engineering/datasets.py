@@ -383,7 +383,7 @@ class Window:
     def convert_list_2_dict(of_list):
         of_dict = OrderedDict()
         for item in of_list:
-            w1, w2 = re.search('(.*)=(.*)', item).groups()
+            w1, w2 = re.search('([^=]*)=(.*)', item).groups()
             of_dict[w1] = w2
 
         return of_dict
