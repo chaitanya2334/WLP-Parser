@@ -37,3 +37,25 @@ test_conll_accuracy: 0.9707974773991115
 test_conll_p: 0.8471953578336557
 test_conll_r: 0.8613569321533924
 test_conll_f: 0.8542174549000487
+LSTMg=0.0
+Configuration:
+Learning Rate: 1
+Gamma (will be non zero if LM is being used): 0.0
+Character Level embedding type: None
+test_dataset_count: 2534
+test_cost_avg: 0.0
+test_cost_sum: 0.0
+test_main_predicted_count: 3059
+test_main_total_count: 3030
+test_main_correct_count: 2602
+test_p: 0.8506047728015691
+test_r: 0.8587458745874588
+test_f: 0.8546559369354574
+test_f05: 0.852220620987816
+test_accuracy: 0.9724932082
+test_token_count: 32392
+test_time: 164.9624948501587
+test_conll_accuracy: 0.9724932081995554
+test_conll_p: 0.8418349880178021
+test_conll_r: 0.8597902097902098
+test_conll_f: 0.8507178688808165

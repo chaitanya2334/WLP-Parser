@@ -31,7 +31,8 @@ class SeqNet(nn.Module):
         print("word embeddings are being trained: {0}".format(cfg.TRAIN_WORD_EMB))
         if cfg.TRAIN_WORD_EMB:
             self.emb_lookup = nn.Embedding(self.vocab_size, self.emb_dim)
-            self.emb_lookup.weight = nn.Parameter(self.emb_mat_tensor)
+            self.emb_lookup.weight = nn.Parameter(cuda.FloatTensor(emb_mat))
+
         else:
             self.emb_lookup = Embedding(self.emb_mat_tensor)
 
