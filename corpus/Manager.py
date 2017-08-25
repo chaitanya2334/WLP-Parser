@@ -146,17 +146,18 @@ class Manager(object):
             print("Loading POS ...")
             self.pos = self.__gen_pos(self.sents)
             self.feat_list = features.create_features(self.articles)
-            print("Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
+            print(
+                "Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
 
             self.enc, self.f_df, self.cut_list = self.__gen_all_features(self.sents, self.labels, self.pnos, self.pos)
 
-
-
-    def gen_data(self, per):
+    def gen_data(self, per, train_per=100):
         ntrain, ndev, ntest = self.__split_dataset(per, self.total)
 
-        self.train = CustomDataset(self.sents[0:ntrain], self.labels[0:ntrain], self.cut_list[0:ntrain + 1], self.enc,
-                                   self.f_df, self.pnos[0:ntrain],
+        ntrain_cut = int((train_per * ntrain) / 100)
+
+        self.train = CustomDataset(self.sents[0:ntrain_cut], self.labels[0:ntrain_cut], self.cut_list[0:ntrain_cut + 1],
+                                   self.enc, self.f_df, self.pnos[0:ntrain_cut],
                                    self.char_index, self.word_index, self.pos_ids, self.rel_ids)
         self.dev = CustomDataset(self.sents[ntrain:ndev], self.labels[ntrain:ndev], self.cut_list[ntrain:ndev + 1],
                                  self.enc, self.f_df, self.pnos[ntrain:ndev],
@@ -166,7 +167,9 @@ class Manager(object):
                                   self.f_df, self.pnos[ndev:ntest],
                                   self.char_index, self.word_index, self.pos_ids, self.rel_ids)
 
-        assert len(self.train) + len(self.dev) + len(self.test) == self.total
+        print("train: no. of sents = {0}".format(len(self.train)))
+        print("dev: no. of sents = {0}".format(len(self.dev)))
+        print("test: no. of sents = {0}".format(len(self.test)))
 
     def __gen_all_features(self, sents, labels, pnos, pos):
         mega_df = pd.DataFrame()
@@ -235,7 +238,7 @@ class Manager(object):
             fvl = window.get_feature_values_list(word_idx, feat_cfg.SKIPCHAIN_LEFT, feat_cfg.SKIPCHAIN_RIGHT)
             feature_dicts.append(fvl)
 
-        #df = pd.DataFrame(feature_dicts)
+        # df = pd.DataFrame(feature_dicts)
 
         return feature_dicts
 

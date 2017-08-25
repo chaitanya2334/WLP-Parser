@@ -47,6 +47,8 @@ MAX_EPOCH_IMP = 20
 
 PER = (60, 20, 20)
 
+TRAIN_PER = 100  # how much of the train dataset should be used in training.
+
 LM_HIDDEN_SIZE = 50
 
 LM_MAX_VOCAB_SIZE = 7500

@@ -239,13 +239,13 @@ def dataset_prep(loadfile=None, savefile=None):
     if loadfile:
         print("Loading corpus and Embedding Matrix ...")
         corpus, embedding_matrix = pickle.load(open(loadfile, "rb"))
-        corpus.gen_data(cfg.PER)
+        corpus.gen_data(cfg.PER, cfg.TRAIN_PER)
     else:
         print("Preparing Embedding Matrix ...")
         embedding_matrix, word_index, char_index = prepare_embeddings(replace_digit=cfg.REPLACE_DIGITS)
         print("Loading Data ...")
         corpus = Manager(load_feat=True, word_index=word_index, char_index=char_index)
-        corpus.gen_data(cfg.PER)
+        corpus.gen_data(cfg.PER, cfg.TRAIN_PER)
 
         if savefile:
             print("Saving corpus and embedding matrix ...")
@@ -290,6 +290,10 @@ def single_run(corpus, embedding_matrix, index, title, overwrite, only_test=Fals
 
 def build_cmd_parser():
     parser = argparse.ArgumentParser(description='Action Sequence Labeler.')
+
+    parser.add_argument('--train_per', dest='train_per', type=int, required=True,
+                        help='Percentage of the train data to be actually used for training. Int between (0-100)')
+
     parser.add_argument('--train_word_emb', dest='train_word_emb', required=True,
                         choices=["pre_and_post", "random", "pre_only"],
                         help='Pick the word embedding strategy. pre_and_post will use pretrained word embeddings '
@@ -315,7 +319,8 @@ def build_cmd_parser():
 
 
 def current_config():
-    s = "TRAIN_WORD_EMB = " + str(cfg.TRAIN_WORD_EMB) + "\n"
+    s = "TRAIN_PER = " + str(cfg.TRAIN_PER) + "\n"
+    s += "TRAIN_WORD_EMB = " + str(cfg.TRAIN_WORD_EMB) + "\n"
     s += "LM_GAMMA = " + str(cfg.LM_GAMMA) + "\n"
     s += "CHAR_LEVEL = " + cfg.CHAR_LEVEL + "\n"
     s += "FEATURE_LEVEL = " + cfg.FEATURE_LEVEL + "\n"
@@ -324,13 +329,14 @@ def current_config():
 
 if __name__ == '__main__':
     args = build_cmd_parser()
-    dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_POS)
 
+    cfg.TRAIN_PER = args.train_per
     cfg.TRAIN_WORD_EMB = args.train_word_emb
     cfg.CHAR_LEVEL = args.char_level
     cfg.FEATURE_LEVEL = args.feature_level
     cfg.LM_GAMMA = args.lm_gamma
 
+    dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_POS)
     i = 0
 
     if cfg.CHAR_LEVEL != "None":
