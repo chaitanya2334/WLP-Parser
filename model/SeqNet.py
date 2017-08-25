@@ -28,13 +28,20 @@ class SeqNet(nn.Module):
         self.char_level = char_level
 
         # init embedding layer, with pre-trained embedding matrix : emb_mat
-        print("word embeddings are being trained: {0}".format(cfg.TRAIN_WORD_EMB))
-        if cfg.TRAIN_WORD_EMB:
+        print("word embeddings are being trained using the following strategy: {0}".format(cfg.TRAIN_WORD_EMB))
+
+        if cfg.TRAIN_WORD_EMB == "pre_and_post":
             self.emb_lookup = nn.Embedding(self.vocab_size, self.emb_dim)
             self.emb_lookup.weight = nn.Parameter(cuda.FloatTensor(emb_mat))
 
-        else:
+        elif cfg.TRAIN_WORD_EMB == "pre_only":
             self.emb_lookup = Embedding(self.emb_mat_tensor)
+
+        elif cfg.TRAIN_WORD_EMB == "random":
+            self.emb_lookup = nn.Embedding(self.vocab_size, self.emb_dim)
+
+            tensor = self.__random_tensor(-0.01, 0.01, (self.vocab_size, self.emb_dim))
+            self.emb_lookup.weight = nn.Parameter(tensor)
 
         self.char_net = CharNet(cfg.CHAR_EMB_DIM, cfg.CHAR_RECURRENT_SIZE, out_size=cfg.EMBEDDING_DIM)
 

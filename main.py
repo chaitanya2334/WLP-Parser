@@ -290,9 +290,12 @@ def single_run(corpus, embedding_matrix, index, title, overwrite, only_test=Fals
 
 def build_cmd_parser():
     parser = argparse.ArgumentParser(description='Action Sequence Labeler.')
-    parser.add_argument('--train_word_emb', dest='train_word_emb', action='store_true')
-    parser.add_argument('--no-train_word_emb', dest='train_word_emb', action='store_false')
-    parser.set_defaults(train_word_emb=True)
+    parser.add_argument('--train_word_emb', dest='train_word_emb', required=True,
+                        choices=["pre_and_post", "random", "pre_only"],
+                        help='Pick the word embedding strategy. pre_and_post will use pretrained word embeddings '
+                             'and will also train further on those, pre_only will not train further '
+                             'and random will initialize the random word embeddings')
+
     parser.add_argument('--lm_gamma', metavar='G', type=float, required=True,
                         help='If Language model is to be used, gamma is a gating variable that controls '
                              'how important LM should be. A float number between (0 - 1)')
@@ -322,8 +325,6 @@ def current_config():
 if __name__ == '__main__':
     args = build_cmd_parser()
     dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_POS)
-    print(dataset.pos_ids)
-    print(dataset.rel_ids)
 
     cfg.TRAIN_WORD_EMB = args.train_word_emb
     cfg.CHAR_LEVEL = args.char_level
