@@ -44,7 +44,7 @@ if __name__ == '__main__':
     title = args.title
     for per in [25, 50, 75, 100]:
         for i in range(1):
-            for we in ["pre_only", "pre_and_post", "random"]:
+            for we in ["pre_and_post"]:
                 for g in gammas:
                     for ch in ch_lvls:
                         for f in f_lvls:
