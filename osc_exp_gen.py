@@ -10,7 +10,7 @@ def template(name, t_per, ch_lvl, f_lvl, g, word_emb, time):
     s += "source ~/.init_workspace_owens\n"
     s += "cd Documents/action-sequence-labeler\n"
 
-    s += "python -m main_train_size_test " "--train_per " + str(t_per) + " --train_word_emb " + word_emb + " --lm_gamma " + str(g) + " --char_level " + ch_lvl + " --feature_level " + f_lvl + " " + name
+    s += "python -m main " "--train_per " + str(t_per) + " --train_word_emb " + word_emb + " --lm_gamma " + str(g) + " --char_level " + ch_lvl + " --feature_level " + f_lvl + " " + name
 
     return s
 
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     ch_lvls = ["None", "Input", "Attention"]
     f_lvls = ["None", "v2"]
     title = args.title
-    for per in [25, 50, 75, 100]:
+    for per in [34, 50, 67, 84]:
         for i in range(1):
             for we in ["pre_and_post"]:
                 for g in gammas:
