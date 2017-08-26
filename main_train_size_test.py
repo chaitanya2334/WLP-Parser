@@ -291,7 +291,7 @@ def single_run(corpus, embedding_matrix, index, title, overwrite, only_test=Fals
 def build_cmd_parser():
     parser = argparse.ArgumentParser(description='Action Sequence Labeler.')
 
-    parser.add_argument('--train_per', dest='train_per', type=int, required=False,
+    parser.add_argument('--train_per', dest='train_per', type=int, required=True,
                         help='Percentage of the train data to be actually used for training. Int between (0-100)')
 
     parser.add_argument('--train_word_emb', dest='train_word_emb', required=True,
@@ -329,6 +329,7 @@ def current_config():
 
 if __name__ == '__main__':
     args = build_cmd_parser()
+    cfg.PER = (80, 10, 10)
 
     if args.train_per is not None:
         cfg.TRAIN_PER = args.train_per

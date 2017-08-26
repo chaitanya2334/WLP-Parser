@@ -42,7 +42,7 @@ if __name__ == '__main__':
     ch_lvls = ["None", "Input", "Attention"]
     f_lvls = ["None", "v2"]
     title = args.title
-    for per in [25, 50, 75]:
+    for per in [25, 50, 75, 100]:
         for i in range(1):
             for we in ["pre_only", "pre_and_post", "random"]:
                 for g in gammas:
