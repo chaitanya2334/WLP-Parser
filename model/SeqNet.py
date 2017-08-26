@@ -11,7 +11,7 @@ from model.utils import to_scalar, TimeDistributed
 
 
 class SeqNet(nn.Module):
-    def __init__(self, emb_mat, isCrossEnt=True, char_level="None", imp_feat='v1'):
+    def __init__(self, emb_mat, isCrossEnt=True, char_level="None", imp_feat='None'):
         super().__init__()
         self.emb_mat_tensor = Variable(cuda.FloatTensor(emb_mat))
         assert self.emb_mat_tensor.size(1) == cfg.EMBEDDING_DIM
@@ -84,12 +84,8 @@ class SeqNet(nn.Module):
 
         self.lstm_linear = nn.Linear(self.hidden_size * 2, cfg.LSTM_OUT_SIZE)
 
-        if self.imp_feat == "v1":
-            self.linear = nn.Linear(cfg.LSTM_OUT_SIZE + cfg.FEATURE_SIZE,
-                                    self.out_size)
-        else:
-            self.linear = nn.Linear(cfg.LSTM_OUT_SIZE,
-                                    self.out_size)
+        self.linear = nn.Linear(cfg.LSTM_OUT_SIZE,
+                                self.out_size)
 
         # self.time_linear = TimeDistributed(self.linear, batch_first=True)
         self.init_state()
@@ -111,7 +107,7 @@ class SeqNet(nn.Module):
 
         self.char_net.init_state()
 
-    def forward(self, sent_idx_seq, char_idx_seq, features, pos, rel):
+    def forward(self, sent_idx_seq, char_idx_seq, pos, rel):
         cfg.ver_print("Sent Index sequence", sent_idx_seq)
 
         seq_len = sent_idx_seq.size(1)
@@ -133,7 +129,6 @@ class SeqNet(nn.Module):
             rel_emb = self.rel_emb(rel)
 
             inp = cat([inp, pos_emb, rel_emb], dim=2)
-
 
         # emb is now of size(1 x seq_len x EMB_DIM)
         cfg.ver_print("Embedding for the Sequence", inp)
@@ -160,10 +155,7 @@ class SeqNet(nn.Module):
 
         lstm_out = lstm_out.unsqueeze(dim=0)
 
-        if self.imp_feat == "v1":
-            label_out = cat([lstm_out, features], dim=2)
-        else:
-            label_out = lstm_out
+        label_out = lstm_out
 
         linear_out = self.linear(label_out.view(seq_len, -1))
         if self.isCrossEnt:

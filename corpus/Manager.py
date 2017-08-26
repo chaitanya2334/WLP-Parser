@@ -31,7 +31,7 @@ import numpy as np
 # TODO fix corpus folder's structure and then improve this class
 from corpus.TextFile import TextFile
 
-Data = namedtuple('Data', ['X', 'C', 'Y', 'P', 'F', 'POS', 'REL'])
+Data = namedtuple('Data', ['X', 'C', 'Y', 'P', 'POS', 'REL'])
 
 
 class CustomDataset(data.Dataset):
@@ -66,10 +66,10 @@ class CustomDataset(data.Dataset):
         f_rel = np.insert(f_rel, 0, self.rel_index['NULL'])
         f_rel = np.insert(f_rel, f_rel.size, self.rel_index['NULL'])
 
-        f = self.enc.transform(f.as_matrix()).todense()
+        #f = self.enc.transform(f.as_matrix()).todense()
         p = self.pnos[item]
         assert len(x) == len(f) + 2, (len(x), len(f))
-        return Data(x, c, y, p, f, f_pos, f_rel)
+        return Data(x, c, y, p, f_pos, f_rel)
 
     def __len__(self):
         return len(self.sents)

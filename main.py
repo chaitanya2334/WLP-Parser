@@ -44,23 +44,23 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
         model.init_state()
 
         # padding cos features are not designed for start and end sentence tags
-        f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
+        # f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
 
         np.set_printoptions(threshold=np.nan)
 
         x_var = Variable(cuda.LongTensor([sample.X]))
         c_var = sample.C
-        f_var = Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda()
+        #f_var = Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda()
         pos_var = Variable(torch.from_numpy(sample.POS).cuda()).unsqueeze(dim=0)
         rel_var = Variable(torch.from_numpy(sample.REL).cuda()).unsqueeze(dim=0)
 
         if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(x_var, c_var, f_var, pos_var, rel_var)
+            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(x_var, c_var, pos_var, rel_var)
             t = is_batch_zeros(emb.squeeze())
             char_att_loss = att_loss(emb.squeeze(), char_emb.squeeze(), t)
 
         else:
-            lm_f_out, lm_b_out, seq_out = model(x_var, c_var, f_var, pos_var, rel_var)
+            lm_f_out, lm_b_out, seq_out = model(x_var, c_var, pos_var, rel_var)
 
         cfg.ver_print("lm_f_out", lm_f_out)
         cfg.ver_print("lm_b_out", lm_b_out)
@@ -172,19 +172,19 @@ def test(name, data, model):
     true_list = []
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=None, conll_eval=True)
     for sample in tqdm(data, desc=name, total=len(data)):
-        f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
+        # f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
         np.set_printoptions(threshold=np.nan)
 
         x_var = Variable(cuda.LongTensor([sample.X]))
         c_var = sample.C
-        f_var = Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda()
+        # f_var = Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda()
         pos_var = Variable(torch.from_numpy(sample.POS).cuda()).unsqueeze(dim=0)
         rel_var = Variable(torch.from_numpy(sample.REL).cuda()).unsqueeze(dim=0)
 
         if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(x_var, c_var, f_var, pos_var, rel_var)
+            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(x_var, c_var, pos_var, rel_var)
         else:
-            lm_f_out, lm_b_out, seq_out = model(x_var, c_var, f_var, pos_var, rel_var)
+            lm_f_out, lm_b_out, seq_out = model(x_var, c_var, pos_var, rel_var)
 
         # remove start and stop tags
         seq_out = seq_out[1:-1]
@@ -307,7 +307,7 @@ def build_cmd_parser():
     parser.add_argument('--char_level', metavar='String', required=True, choices=["None", "Input", "Attention"],
                         help='The char level embedding to add on top of the bi LSTM.')
 
-    parser.add_argument('--feature_level', metavar='String', required=True, choices=["None", "v1", "v2"],
+    parser.add_argument('--feature_level', metavar='String', required=True, choices=["None", "v2"],
                         help='The feature level to be added on top of the bi LSTM.')
 
     parser.add_argument("filename", metavar="String",
@@ -343,9 +343,6 @@ if __name__ == '__main__':
 
     if cfg.CHAR_LEVEL != "None":
         cfg.CHAR_VOCAB = len(dataset.char_index.items())
-
-    if cfg.FEATURE_LEVEL == "v1":
-        cfg.FEATURE_SIZE = dataset.train[0].F.shape[1]
 
     if cfg.FEATURE_LEVEL == "v2":
         cfg.POS_VOCAB = len(dataset.pos_ids)
