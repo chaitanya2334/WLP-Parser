@@ -11,7 +11,7 @@ class CharNet(nn.Module):
         self.batch_size = 1
         self.hidden_size = recurr_size
         self.emb = nn.Embedding(cfg.CHAR_VOCAB, embedding_dim=emb_size, scale_grad_by_freq=True)
-        self.rnn = nn.RNN(input_size=emb_size, hidden_size=self.hidden_size, batch_first=True, bidirectional=True)
+        self.rnn = nn.LSTM(input_size=emb_size, hidden_size=self.hidden_size, batch_first=True, bidirectional=True)
         self.linear = nn.Linear(in_features=self.hidden_size * self.num_dir, out_features=out_size)
         self.tanh = nn.Tanh()
         self.hidden_state = None
@@ -20,7 +20,8 @@ class CharNet(nn.Module):
 
     def init_state(self):
         h0_encoder_bi = Variable(zeros(self.num_layers * self.num_dir, self.batch_size, self.hidden_size))
-        self.hidden_state = h0_encoder_bi.cuda()
+        c0_encoder_bi = Variable(zeros(self.num_layers * self.num_dir, self.batch_size, self.hidden_size))
+        self.hidden_state = (h0_encoder_bi.cuda(), c0_encoder_bi.cuda())
 
     def init_weights(self):
         initrange = 0.1
@@ -38,7 +39,7 @@ class CharNet(nn.Module):
 
             # TODO verify that this is indeed the last outputs of both forward rnn and backward rnn
             # and that we are concatenating correctly
-            out = cat([hidden_state[0], hidden_state[1]], dim=1)
+            out = cat([hidden_state[0][0], hidden_state[0][1]], dim=1)
             cfg.ver_print("Hidden state concat", out)
             out = self.linear(out)
             out = self.tanh(out)
