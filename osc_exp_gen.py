@@ -2,15 +2,16 @@ import argparse
 import os
 
 
-def template(name, t_per, ch_lvl, f_lvl, g, word_emb, time):
-
+def template(name, t_per, ch_lvl, pos, dep_label, dep_word, g, word_emb, time):
     s = "#PBS -N " + name + "\n"
     s += "#PBS -l walltime=" + time + "\n"
     s += "#PBS -l nodes=1:ppn=28:gpus=1\n"
     s += "source ~/.init_workspace_owens\n"
     s += "cd Documents/action-sequence-labeler\n"
 
-    s += "python -m main " "--train_per " + str(t_per) + " --train_word_emb " + word_emb + " --lm_gamma " + str(g) + " --char_level " + ch_lvl + " --feature_level " + f_lvl + " " + name
+    s += "python -m main " "--train_per " + str(t_per) + " --train_word_emb " + word_emb + \
+         " --lm_gamma " + str(g) + " --char_level " + ch_lvl + " --pos " + pos + " --dep_label " + dep_label + \
+         " --dep_word " + dep_word + " " + name
 
     return s
 
@@ -40,15 +41,24 @@ if __name__ == '__main__':
 
     gammas = [x / 10 for x in range(10)]
     ch_lvls = ["None", "Input", "Attention"]
-    f_lvls = ["None", "v2"]
+    f_lvls = ["Yes", "No"]
     title = args.title
     for per in [100]:
         for i in range(1):
             for we in ["pre_and_post", "random"]:
                 for g in gammas:
                     for ch in ch_lvls:
-                        for f in f_lvls:
-                            name = title + '_T_SIZE_' + str(per) + '_R_' + str(i) + "_WE_" + str(we) + "_G_" + str(g) + "_CH_" + ch + "_F_" + f
-                            s = template(name, per, ch, f, g, we, time)
-                            file_path = os.path.join(script_dir, name + ".job")
-                            write_file(file_path, s)
+                        for f_pos in f_lvls:
+                            for f_dep_label in f_lvls:
+                                for f_dep_word in f_lvls:
+
+                                    if f_pos == "No" and f_dep_label == "No" and f_dep_word == "No":
+                                        continue
+
+                                    name = title + '_T_SIZE_' + str(per) + '_R_' + str(i) + "_WE_" + str(we) + \
+                                           "_G_" + str(g) + "_CH_" + ch + \
+                                           "_POS_" + f_pos + "_DEP_L_" + f_dep_label + "_DEP_W_" + f_dep_word
+
+                                    s = template(name, per, ch, f_pos, f_dep_label, f_dep_word, g, we, time)
+                                    file_path = os.path.join(script_dir, name + ".job")
+                                    write_file(file_path, s)
