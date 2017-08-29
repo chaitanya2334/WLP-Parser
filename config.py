@@ -103,6 +103,7 @@ DB_WITHOUT_FEATURES = os.path.join(CURRENT_DIR, "dataset_without_features.p")
 DB_WITH_FEATURES = os.path.join(CURRENT_DIR, "dataset_with_features.p")
 DB_NO_NEG_WITH_FEATURES = os.path.join(CURRENT_DIR, "dataset_no_negative_sents_with_features.p")
 DB_WITH_POS = os.path.join(CURRENT_DIR, "dataset_with_pos.p")
+DB_WITH_POS_DEP = os.path.join(CURRENT_DIR, "dataset_with_pos_dep.p")
 
 # Number of windows to use during training (offset is COUNT_WINDOWS_TEST, i.e. test windows will
 # be loaded first)
@@ -123,7 +124,9 @@ LABELS = ["Action", "Reagent", "Location", "Device", "Mention", "Method", "Seal"
 
 FEATURE_SIZE = 0
 
-FEATURE_LEVEL = "None"
+POS_FEATURE = "No"
+DEP_LABEL_FEATURE = "No"
+DEP_WORD_FEATURE = "No"
 
 FEAT_L2_REG = 0.3
 

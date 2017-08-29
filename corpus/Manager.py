@@ -31,11 +31,11 @@ import numpy as np
 # TODO fix corpus folder's structure and then improve this class
 from corpus.TextFile import TextFile
 
-Data = namedtuple('Data', ['X', 'C', 'Y', 'P', 'POS', 'REL'])
+Data = namedtuple('Data', ['X', 'C', 'Y', 'P', 'POS', 'REL', 'DEP'])
 
 
 class CustomDataset(data.Dataset):
-    def __init__(self, sents, labels, cut_list, enc, f_df, pnos, char_index, word_index, pos_ids, rel_ids):
+    def __init__(self, sents, labels, cut_list, enc, f_df, pnos, char_index, word_index, pos_ids, rel_ids, dep_ids, f_dep):
         self.sents = sents
         self.labels = labels
         self.cut_list = cut_list
@@ -46,6 +46,8 @@ class CustomDataset(data.Dataset):
         self.word_index = word_index
         self.pos_index = pos_ids
         self.rel_index = rel_ids
+        self.dep_index = dep_ids
+        self.f_dep = f_dep
 
         self.tag_idx = {'B': 0, 'I': 1, 'O': 2}
 
@@ -66,10 +68,14 @@ class CustomDataset(data.Dataset):
         f_rel = np.insert(f_rel, 0, self.rel_index['NULL'])
         f_rel = np.insert(f_rel, f_rel.size, self.rel_index['NULL'])
 
-        #f = self.enc.transform(f.as_matrix()).todense()
+        f_dep = self.f_dep[self.cut_list[item]:self.cut_list[item + 1]]
+
+        f_dep.insert(0, self.word_index['<s>'])
+        f_dep.insert(len(f_dep), self.word_index['</s>'])
+        # f = self.enc.transform(f.as_matrix()).todense()
         p = self.pnos[item]
         assert len(x) == len(f) + 2, (len(x), len(f))
-        return Data(x, c, y, p, f_pos, f_rel)
+        return Data(x, c, y, p, f_pos, f_rel, f_dep)
 
     def __len__(self):
         return len(self.sents)
@@ -149,23 +155,26 @@ class Manager(object):
             print(
                 "Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
 
-            self.enc, self.f_df, self.cut_list = self.__gen_all_features(self.sents, self.labels, self.pnos, self.pos)
+            self.enc, self.f_df, self.cut_list, self.f_dep = self.__gen_all_features(self.sents, self.labels, self.pnos, self.pos)
 
-    def gen_data(self, per, train_per=100):
+    def gen_data(self, per, train_per=100, gen_feat_again=False):
+        if gen_feat_again:
+            self.enc, self.f_df, self.cut_list, self.f_dep = self.__gen_all_features(self.sents, self.labels, self.pnos, self.pos)
+
         ntrain, ndev, ntest = self.__split_dataset(per, self.total)
 
         ntrain_cut = int((train_per * ntrain) / 100)
 
         self.train = CustomDataset(self.sents[0:ntrain_cut], self.labels[0:ntrain_cut], self.cut_list[0:ntrain_cut + 1],
                                    self.enc, self.f_df, self.pnos[0:ntrain_cut],
-                                   self.char_index, self.word_index, self.pos_ids, self.rel_ids)
+                                   self.char_index, self.word_index, self.pos_ids, self.rel_ids, self.dep_ids, self.f_dep)
         self.dev = CustomDataset(self.sents[ntrain:ndev], self.labels[ntrain:ndev], self.cut_list[ntrain:ndev + 1],
                                  self.enc, self.f_df, self.pnos[ntrain:ndev],
-                                 self.char_index, self.word_index, self.pos_ids, self.rel_ids)
+                                 self.char_index, self.word_index, self.pos_ids, self.rel_ids, self.dep_ids, self.f_dep)
         self.test = CustomDataset(self.sents[ndev:ntest], self.labels[ndev:ntest], self.cut_list[ndev:ntest + 1],
                                   self.enc,
                                   self.f_df, self.pnos[ndev:ntest],
-                                  self.char_index, self.word_index, self.pos_ids, self.rel_ids)
+                                  self.char_index, self.word_index, self.pos_ids, self.rel_ids, self.dep_ids, self.f_dep)
 
         print("train: no. of sents = {0}".format(len(self.train)))
         print("dev: no. of sents = {0}".format(len(self.dev)))
@@ -204,11 +213,25 @@ class Manager(object):
         self.rel_ids = {k: v for v, k in enumerate(rel_id_list)}
         self.rel_ids['NULL'] = len(self.rel_ids)
 
+        dep_id_list = unique_ids['0:gov'].get_values().tolist()
+        self.dep_ids = {k: v for v, k in enumerate(dep_id_list)}
+        self.dep_ids['NULL'] = len(self.dep_ids)
+
+        f_dep = mega_df['0:gov'].as_matrix().tolist()
+        dep_words = [list(self.dep_ids.keys())[list(self.dep_ids.values()).index(word_id)] for word_id in f_dep]
+
+        # to lowercase
+        dep_words = [word.lower() for word in dep_words]
+
+        # numbers to single representation
+        dep_words = [re.sub(r'\d', '0', word) for word in dep_words]
+        f_dep = [self.word_index[word] for word in dep_words]
+
         print(tabulate(mega_df[:10], headers='keys', tablefmt='psql'))
         enc = OneHotEncoder()
         enc.fit(mega_df.as_matrix())
 
-        return enc, mega_df, cut_list
+        return enc, mega_df, cut_list, f_dep
 
     # returns pos tags for every word in each sent in `sents`.
     @staticmethod

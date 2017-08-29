@@ -11,7 +11,7 @@ from model.utils import to_scalar, TimeDistributed
 
 
 class SeqNet(nn.Module):
-    def __init__(self, emb_mat, isCrossEnt=True, char_level="None", imp_feat='None'):
+    def __init__(self, emb_mat, isCrossEnt=True, char_level="None", pos_feat="No", dep_rel_feat="No", dep_word_feat="No"):
         super().__init__()
         self.emb_mat_tensor = Variable(cuda.FloatTensor(emb_mat))
         assert self.emb_mat_tensor.size(1) == cfg.EMBEDDING_DIM
@@ -24,7 +24,9 @@ class SeqNet(nn.Module):
         self.out_size = cfg.CATEGORIES
         self.pf_dim = cfg.PF_EMBEDDING_DIM
         self.char_emb_dim = cfg.EMBEDDING_DIM
-        self.imp_feat = imp_feat
+        self.pos_feat = pos_feat
+        self.dep_rel_feat = dep_rel_feat
+        self.dep_word_feat = dep_word_feat
         self.char_level = char_level
 
         # init embedding layer, with pre-trained embedding matrix : emb_mat
@@ -45,12 +47,12 @@ class SeqNet(nn.Module):
 
         self.char_net = CharNet(cfg.CHAR_EMB_DIM, cfg.CHAR_RECURRENT_SIZE, out_size=cfg.EMBEDDING_DIM)
 
-        if imp_feat == 'v2':
+        if pos_feat == "Yes":
             self.pos_emb = nn.Embedding(cfg.POS_VOCAB, cfg.POS_EMB_DIM)
             # initialize weights
             tensor = self.__random_tensor(-0.01, 0.01, (cfg.POS_VOCAB, cfg.POS_EMB_DIM))
             self.pos_emb.weight = nn.Parameter(tensor)
-
+        if dep_rel_feat == "Yes":
             self.rel_emb = nn.Embedding(cfg.REL_VOCAB, cfg.REL_EMB_DIM)
             # initialize weights
             tensor = self.__random_tensor(-0.01, 0.01, (cfg.REL_VOCAB, cfg.REL_EMB_DIM))
@@ -63,16 +65,19 @@ class SeqNet(nn.Module):
         if self.char_level == "Input":
             inp_size += self.char_emb_dim
 
-        if self.imp_feat == "v2":
-            inp_size += cfg.POS_EMB_DIM + cfg.REL_EMB_DIM
+        if self.pos_feat == "Yes":
+            inp_size += cfg.POS_EMB_DIM
+
+        if self.dep_rel_feat == "Yes":
+            inp_size += cfg.REL_EMB_DIM
+
+        if self.dep_word_feat == "Yes":
+            inp_size += self.emb_dim
 
         self.lstm = nn.LSTM(input_size=inp_size, batch_first=True,
                             num_layers=self.num_layers,
                             hidden_size=self.hidden_size,
                             bidirectional=True)
-
-        if self.imp_feat == "v2":
-            self.feat_net = None
 
         self.lm_forward = TimeDistributed(LMnet(input_size=self.hidden_size,
                                                 out_size=min(self.vocab_size + 1, cfg.LM_MAX_VOCAB_SIZE),
@@ -107,7 +112,7 @@ class SeqNet(nn.Module):
 
         self.char_net.init_state()
 
-    def forward(self, sent_idx_seq, char_idx_seq, pos, rel):
+    def forward(self, sent_idx_seq, char_idx_seq, pos, rel, dep_word):
         cfg.ver_print("Sent Index sequence", sent_idx_seq)
 
         seq_len = sent_idx_seq.size(1)
@@ -124,11 +129,16 @@ class SeqNet(nn.Module):
         else:
             inp = emb
 
-        if self.imp_feat == 'v2':
+        if self.pos_feat == "Yes":
             pos_emb = self.pos_emb(pos)
+            inp = cat([inp, pos_emb], dim=2)
+        if self.dep_rel_feat == "Yes":
             rel_emb = self.rel_emb(rel)
-
-            inp = cat([inp, pos_emb, rel_emb], dim=2)
+            inp = cat([inp, rel_emb], dim=2)
+        if self.dep_word_feat == "Yes":
+            dep_emb = self.emb_lookup(dep_word).data.clone()
+            dep_emb = Variable(dep_emb)
+            inp = cat([inp, dep_emb], dim=2)
 
         # emb is now of size(1 x seq_len x EMB_DIM)
         cfg.ver_print("Embedding for the Sequence", inp)

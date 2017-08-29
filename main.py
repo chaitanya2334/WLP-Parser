@@ -53,14 +53,15 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
         #f_var = Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda()
         pos_var = Variable(torch.from_numpy(sample.POS).cuda()).unsqueeze(dim=0)
         rel_var = Variable(torch.from_numpy(sample.REL).cuda()).unsqueeze(dim=0)
+        dep_var = Variable(cuda.LongTensor([sample.DEP]))
 
         if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(x_var, c_var, pos_var, rel_var)
+            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(x_var, c_var, pos_var, rel_var, dep_var)
             t = is_batch_zeros(emb.squeeze())
             char_att_loss = att_loss(emb.squeeze(), char_emb.squeeze(), t)
 
         else:
-            lm_f_out, lm_b_out, seq_out = model(x_var, c_var, pos_var, rel_var)
+            lm_f_out, lm_b_out, seq_out = model(x_var, c_var, pos_var, rel_var, dep_var)
 
         cfg.ver_print("lm_f_out", lm_f_out)
         cfg.ver_print("lm_b_out", lm_b_out)
@@ -105,7 +106,8 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
 
 def build_model(train_dataset, dev_dataset, embedding_matrix, model_save_path):
     # init model
-    model = SeqNet(embedding_matrix, isCrossEnt=False, char_level=cfg.CHAR_LEVEL, imp_feat=cfg.FEATURE_LEVEL)
+    model = SeqNet(embedding_matrix, isCrossEnt=False, char_level=cfg.CHAR_LEVEL, pos_feat=cfg.POS_FEATURE,
+                   dep_rel_feat=cfg.DEP_LABEL_FEATURE, dep_word_feat=cfg.DEP_WORD_FEATURE)
 
     # Turn on cuda
     model = model.cuda()
@@ -180,11 +182,12 @@ def test(name, data, model):
         # f_var = Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda()
         pos_var = Variable(torch.from_numpy(sample.POS).cuda()).unsqueeze(dim=0)
         rel_var = Variable(torch.from_numpy(sample.REL).cuda()).unsqueeze(dim=0)
+        dep_var = Variable(cuda.LongTensor([sample.DEP]))
 
         if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(x_var, c_var, pos_var, rel_var)
+            lm_f_out, lm_b_out, seq_out, emb, char_emb = model(x_var, c_var, pos_var, rel_var, dep_var)
         else:
-            lm_f_out, lm_b_out, seq_out = model(x_var, c_var, pos_var, rel_var)
+            lm_f_out, lm_b_out, seq_out = model(x_var, c_var, pos_var, rel_var, dep_var)
 
         # remove start and stop tags
         seq_out = seq_out[1:-1]
@@ -304,11 +307,17 @@ def build_cmd_parser():
                         help='If Language model is to be used, gamma is a gating variable that controls '
                              'how important LM should be. A float number between (0 - 1)')
 
-    parser.add_argument('--char_level', metavar='String', required=True, choices=["None", "Input", "Attention"],
+    parser.add_argument('--char_level', required=True, choices=["None", "Input", "Attention"],
                         help='The char level embedding to add on top of the bi LSTM.')
 
-    parser.add_argument('--feature_level', metavar='String', required=True, choices=["None", "v2"],
+    parser.add_argument('--pos', required=True, choices=["No", "Yes"],
                         help='The feature level to be added on top of the bi LSTM.')
+
+    parser.add_argument('--dep_label', required=True, choices=["No", "Yes"],
+                        help='Whether or not to include dependency labels embedding')
+
+    parser.add_argument('--dep_word', required=True, choices=["No", "Yes"],
+                        help="whether or not to include dependency word embedding")
 
     parser.add_argument("filename", metavar="String",
                         help="This is the filename (without ext) "
@@ -323,7 +332,9 @@ def current_config():
     s += "TRAIN_WORD_EMB = " + str(cfg.TRAIN_WORD_EMB) + "\n"
     s += "LM_GAMMA = " + str(cfg.LM_GAMMA) + "\n"
     s += "CHAR_LEVEL = " + cfg.CHAR_LEVEL + "\n"
-    s += "FEATURE_LEVEL = " + cfg.FEATURE_LEVEL + "\n"
+    s += "POS = " + cfg.POS_FEATURE + "\n"
+    s += "DEP_LABEL = " + cfg.DEP_LABEL_FEATURE + "\n"
+    s += "DEP_WORD = " + cfg.DEP_WORD_FEATURE + "\n"
 
     return s
 
@@ -335,18 +346,23 @@ if __name__ == '__main__':
 
     cfg.TRAIN_WORD_EMB = args.train_word_emb
     cfg.CHAR_LEVEL = args.char_level
-    cfg.FEATURE_LEVEL = args.feature_level
+    cfg.POS_FEATURE = args.pos
+    cfg.DEP_LABEL_FEATURE = args.dep_label
+    cfg.DEP_WORD_FEATURE = args.dep_word
     cfg.LM_GAMMA = args.lm_gamma
 
-    dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_POS)
+    dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_POS_DEP)
     i = 0
 
     if cfg.CHAR_LEVEL != "None":
         cfg.CHAR_VOCAB = len(dataset.char_index.items())
 
-    if cfg.FEATURE_LEVEL == "v2":
+    if cfg.POS_FEATURE == "Yes":
         cfg.POS_VOCAB = len(dataset.pos_ids)
+    if cfg.DEP_LABEL_FEATURE == "Yes":
         cfg.REL_VOCAB = len(dataset.rel_ids)
+    if cfg.DEP_WORD_FEATURE == "Yes":
+        cfg.DEP_WORD_VOCAB = emb_mat.shape[0]
 
     print(current_config())
     test_ev = single_run(dataset, emb_mat, i, args.filename, overwrite=False)
