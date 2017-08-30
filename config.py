@@ -136,6 +136,8 @@ DB_200_WITH_FEATURES = os.path.join(CURRENT_DIR, "200_dataset_with_features.p")
 
 TRAIN_WORD_EMB = False
 
+VIS_SAVE_DIR = os.path.join(CURRENT_DIR, "visualization/results")
+
 def ver_print(string, value):
     if VERBOSE:
         print(string + ':\n {0}'.format(value))

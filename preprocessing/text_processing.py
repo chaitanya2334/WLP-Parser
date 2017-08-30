@@ -79,6 +79,7 @@ def prepare_embeddings(use_norm=False, replace_digit=True, load_bin=True, suppor
         out.writelines([item + ' ' + str(word_index[item]) + '\n' for item in sent_iter_flat])
 
     embedding_matrix = np.zeros((len(word_index) + 1, cfg.EMBEDDING_DIM))
+    embedding_matrix = np.random.uniform(low=-0.01, high=0.01, size=(len(word_index) + 1, cfg.EMBEDDING_DIM))
     print("         Populating Embedding Matrix ...")
     with open(cfg.OOV_FILEPATH, 'w') as f:
         f.write("Out of Vocabulary words\n")
