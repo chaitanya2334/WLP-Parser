@@ -44,7 +44,7 @@ if __name__ == '__main__':
     f_lvls = ["Yes", "No"]
     title = args.title
     for per in [100]:
-        for i in range(1):
+        for i in range(5):
             for we in ["pre_and_post"]:
                 for g in gammas:
                     for ch in ch_lvls:
