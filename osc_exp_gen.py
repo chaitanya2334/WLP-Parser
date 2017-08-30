@@ -45,20 +45,18 @@ if __name__ == '__main__':
     title = args.title
     for per in [100]:
         for i in range(1):
-            for we in ["pre_and_post", "random"]:
+            for we in ["pre_and_post"]:
                 for g in gammas:
                     for ch in ch_lvls:
                         for f_pos in f_lvls:
                             for f_dep_label in f_lvls:
                                 for f_dep_word in f_lvls:
 
-                                    if f_pos == "No" and f_dep_label == "No" and f_dep_word == "No":
-                                        continue
+                                    if f_pos == "Yes" and f_dep_label == "No" and f_dep_word == "No":
+                                        name = title + '_T_SIZE_' + str(per) + '_R_' + str(i) + "_WE_" + str(we) + \
+                                               "_G_" + str(g) + "_CH_" + ch + \
+                                               "_POS_" + f_pos + "_DEP_L_" + f_dep_label + "_DEP_W_" + f_dep_word
 
-                                    name = title + '_T_SIZE_' + str(per) + '_R_' + str(i) + "_WE_" + str(we) + \
-                                           "_G_" + str(g) + "_CH_" + ch + \
-                                           "_POS_" + f_pos + "_DEP_L_" + f_dep_label + "_DEP_W_" + f_dep_word
-
-                                    s = template(name, per, ch, f_pos, f_dep_label, f_dep_word, g, we, time)
-                                    file_path = os.path.join(script_dir, name + ".job")
-                                    write_file(file_path, s)
+                                        s = template(name, per, ch, f_pos, f_dep_label, f_dep_word, g, we, time)
+                                        file_path = os.path.join(script_dir, name + ".job")
+                                        write_file(file_path, s)
