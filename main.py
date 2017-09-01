@@ -242,7 +242,7 @@ def dataset_prep(loadfile=None, savefile=None):
     if loadfile:
         print("Loading corpus and Embedding Matrix ...")
         corpus, embedding_matrix = pickle.load(open(loadfile, "rb"))
-        corpus.gen_data(cfg.PER, cfg.TRAIN_PER)
+        corpus.gen_data(cfg.PER, cfg.TRAIN_PER, gen_feat_again=True)
         zero_ids = np.where(~embedding_matrix.any(axis=1))[0]
         embedding_matrix[zero_ids] = np.random.uniform(-0.01, 0.01, (1, embedding_matrix.shape[1]))
 
@@ -342,30 +342,30 @@ def current_config():
     return s
 
 if __name__ == '__main__':
-    args = build_cmd_parser()
+    # args = build_cmd_parser()
+    #
+    # if args.train_per is not None:
+    #     cfg.TRAIN_PER = args.train_per
+    #
+    # cfg.TRAIN_WORD_EMB = args.train_word_emb
+    # cfg.CHAR_LEVEL = args.char_level
+    # cfg.POS_FEATURE = args.pos
+    # cfg.DEP_LABEL_FEATURE = args.dep_label
+    # cfg.DEP_WORD_FEATURE = args.dep_word
+    # cfg.LM_GAMMA = args.lm_gamma
 
-    if args.train_per is not None:
-        cfg.TRAIN_PER = args.train_per
-
-    cfg.TRAIN_WORD_EMB = args.train_word_emb
-    cfg.CHAR_LEVEL = args.char_level
-    cfg.POS_FEATURE = args.pos
-    cfg.DEP_LABEL_FEATURE = args.dep_label
-    cfg.DEP_WORD_FEATURE = args.dep_word
-    cfg.LM_GAMMA = args.lm_gamma
-
-    dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_POS_DEP)
-    i = 0
-
-    if cfg.CHAR_LEVEL != "None":
-        cfg.CHAR_VOCAB = len(dataset.char_index.items())
-
-    if cfg.POS_FEATURE == "Yes":
-        cfg.POS_VOCAB = len(dataset.pos_ids)
-    if cfg.DEP_LABEL_FEATURE == "Yes":
-        cfg.REL_VOCAB = len(dataset.rel_ids)
-    if cfg.DEP_WORD_FEATURE == "Yes":
-        cfg.DEP_WORD_VOCAB = emb_mat.shape[0]
-
-    print(current_config())
-    test_ev = single_run(dataset, emb_mat, i, args.filename, overwrite=False)
+    dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_POS_DEP, savefile=cfg.DB_WITH_POS_DEP)
+    # i = 0
+    #
+    # if cfg.CHAR_LEVEL != "None":
+    #     cfg.CHAR_VOCAB = len(dataset.char_index.items())
+    #
+    # if cfg.POS_FEATURE == "Yes":
+    #     cfg.POS_VOCAB = len(dataset.pos_ids)
+    # if cfg.DEP_LABEL_FEATURE == "Yes":
+    #     cfg.REL_VOCAB = len(dataset.rel_ids)
+    # if cfg.DEP_WORD_FEATURE == "Yes":
+    #     cfg.DEP_WORD_VOCAB = emb_mat.shape[0]
+    #
+    # print(current_config())
+    # test_ev = single_run(dataset, emb_mat, i, args.filename, overwrite=False)

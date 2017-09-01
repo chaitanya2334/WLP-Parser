@@ -2,7 +2,7 @@ import glob
 import os
 import random
 from collections import namedtuple
-
+from preprocessing.feature_engineering.GeniaTagger import GeniaTagger
 from nltk.parse.stanford import StanfordDependencyParser
 from sklearn.preprocessing import OneHotEncoder
 from tabulate import tabulate
@@ -150,7 +150,7 @@ class Manager(object):
         self.test = None
         if load_feat:
             print("Loading POS ...")
-            self.pos = self.__gen_pos(self.sents)
+            self.pos = self.__gen_pos_genia(self.sents)
             self.feat_list = features.create_features(self.articles)
             print(
                 "Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
@@ -159,6 +159,9 @@ class Manager(object):
 
     def gen_data(self, per, train_per=100, gen_feat_again=False):
         if gen_feat_again:
+            print("Loading POS ...")
+            self.pos = self.__gen_pos_genia(self.sents)
+            print("Generating all the features")
             self.enc, self.f_df, self.cut_list, self.f_dep = self.__gen_all_features(self.sents, self.labels, self.pnos, self.pos)
 
         ntrain, ndev, ntest = self.__split_dataset(per, self.total)
@@ -235,11 +238,20 @@ class Manager(object):
 
     # returns pos tags for every word in each sent in `sents`.
     @staticmethod
-    def __gen_pos(sents):
+    def __gen_pos_stanford(sents):
         pos = PosTagger(feat_cfg.STANFORD_POS_JAR_FILEPATH, feat_cfg.STANFORD_MODEL_FILEPATH,
                         cache_filepath=None)
 
         return pos.tag_sents(sents)
+
+    @staticmethod
+    def __gen_pos_genia(sents):
+        pos_tagger = GeniaTagger(feat_cfg.GENIA_TAGGER_FILEPATH)
+
+        res = pos_tagger.parse_through_file([" ".join(sent) for sent in sents])
+        print("Done Genia Tagger")
+        return res
+
 
     @staticmethod
     def __gen_dep(sents, pos=None):
