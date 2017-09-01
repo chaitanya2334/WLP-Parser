@@ -60,8 +60,6 @@ class GeniaTagger(object):
                     word_tag = Tag(line.split("\t"))
                     sent.append((word_tag.word, word_tag.pos))
 
-        print(ret_sents)
-
         return ret_sents
 
     def parse(self, sents):
