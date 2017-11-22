@@ -39,11 +39,11 @@ CATEGORIES = 3
 
 OOV_FILEPATH = os.path.join(CURRENT_DIR, "preprocessing/oov.txt")
 
-MODEL_SAVE_DIR = os.path.join(CURRENT_DIR, "saved_models")
+MODEL_SAVE_DIR = os.path.join(CURRENT_DIR, "results/models")
 
 FILTER_ALL_NEG = False
 
-MAX_EPOCH_IMP = 20
+MAX_EPOCH_IMP = 7
 
 PER = (60, 20, 20)
 
@@ -83,11 +83,11 @@ UNK = "<unk>"
 
 RANDOM_TRAIN = True
 
-PRED_BRAT_FULL = "brat_results/pred/brat_out"
-TRUE_BRAT_FULL = "brat_results/true/brat_out"
+PRED_BRAT_FULL = "results/brat_results/pred/brat_out"
+TRUE_BRAT_FULL = "results/brat_results/true/brat_out"
 
-PRED_BRAT_INC = "brat_results/pred/brat_inc_out"
-TRUE_BRAT_INC = "brat_results/true/brat_inc_out"
+PRED_BRAT_INC = "results/brat_results/pred/brat_inc_out"
+TRUE_BRAT_INC = "results/brat_results/true/brat_inc_out"
 
 CLIP = None
 
@@ -95,13 +95,15 @@ BEST_MODEL_SELECTOR = "dev_conll_f"
 
 RESULT_FILE = os.path.join(CURRENT_DIR, "test_results.txt")
 
-TEXT_RESULT_DIR = os.path.join(CURRENT_DIR, "text_results")
+TEXT_RESULT_DIR = os.path.join(CURRENT_DIR, "results/text_results")
 
-CSV_RESULT_DIR = os.path.join(CURRENT_DIR, "csv_results")
+CSV_RESULT_DIR = os.path.join(CURRENT_DIR, "results/csv_results")
 
 DB_WITHOUT_FEATURES = os.path.join(CURRENT_DIR, "dataset_without_features.p")
-DB_WITH_FEATURES = os.path.join(CURRENT_DIR, "dataset_with_features.p")
+DB_WITH_FEATURES = os.path.join(CURRENT_DIR, "results/pickles/dataset_with_features.p")
 DB_NO_NEG_WITH_FEATURES = os.path.join(CURRENT_DIR, "dataset_no_negative_sents_with_features.p")
+DEP_PICKLE_DIR = os.path.join(CURRENT_DIR, "results/pickles/dep_graphs")
+POS_PICKLE_DIR = os.path.join(CURRENT_DIR, "results/pickles/pos_tags")
 DB_WITH_POS = os.path.join(CURRENT_DIR, "dataset_with_pos.p")
 DB_WITH_POS_DEP = os.path.join(CURRENT_DIR, "dataset_with_pos_dep.p")
 
@@ -118,9 +120,10 @@ NO_NE_LABEL = "O"
 # labels to accept when parsing data, all other labels will be treated as normal text
 # e.g. in "Manhatten/NY" the "NY" will not be treated as a label and the full token
 # "Manhatten/NY" will be loaded as one word
-LABELS = ["Action", "Reagent", "Location", "Device", "Mention", "Method", "Seal", "Modifier", "Numerical",
-          "Measure-Type",
-          "Unit", "Quantity", "Concentration", "Time", "Tool", "Temperature", "Rpm", "Misc", "Action-Mention"]
+LABELS = ["Action", "Reagent", "Location", "Device", "Mention", "Method", "Amount", "Concentration", "Size", "Time",
+          "Tool", "Temperature", "pH", "Speed", "Seal", "Modifier", "Generic-Measure", "Numerical", "Measure-Type"]
+
+BIO_LABELS = [""]
 
 FEATURE_SIZE = 0
 
