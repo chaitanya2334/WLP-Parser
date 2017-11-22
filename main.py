@@ -3,6 +3,9 @@ import random
 import os
 
 import time
+
+import colorlog
+import sys
 from torch import nn, optim, max, LongTensor, cuda, sum, transpose, torch, stack, tensor
 from torch.autograd import Variable
 from torch.nn.utils import clip_grad_norm
@@ -10,17 +13,18 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from corpus.BratWriter import BratFile
-from corpus.Manager import Manager, CustomDataset
+from corpus.WLPDataset import WLPDataset
 import config as cfg
 from model.SeqNet import SeqNet
 from model.utils import to_scalar, all_zeros, is_batch_zeros
 from postprocessing.evaluator import Evaluator
-from preprocessing.text_processing import prepare_embeddings
 import numpy as np
 import pickle
 import pandas as pd
 
 from preprocessing.utils import quicksave, quickload, touch
+
+logger = colorlog.getLogger(__name__)
 
 
 def argmax(var):
@@ -33,8 +37,8 @@ def argmax(var):
     return preds
 
 
-def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, lm_b_criterion, att_loss, gamma):
-    evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=None, conll_eval=True)
+def train_a_epoch(name, data, tag_idx, model, optimizer, seq_criterion, lm_f_criterion, lm_b_criterion, att_loss, gamma):
+    evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
 
     for sample in tqdm(data, desc=name, total=len(data)):
 
@@ -50,7 +54,7 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
 
         x_var = Variable(cuda.LongTensor([sample.X]))
         c_var = sample.C
-        #f_var = Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda()
+        # f_var = Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda()
         pos_var = Variable(torch.from_numpy(sample.POS).cuda()).unsqueeze(dim=0)
         rel_var = Variable(torch.from_numpy(sample.REL).cuda()).unsqueeze(dim=0)
         dep_var = Variable(cuda.LongTensor([sample.DEP]))
@@ -63,27 +67,28 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
         else:
             lm_f_out, lm_b_out, seq_out = model(x_var, c_var, pos_var, rel_var, dep_var)
 
-        cfg.ver_print("lm_f_out", lm_f_out)
-        cfg.ver_print("lm_b_out", lm_b_out)
-        cfg.ver_print("seq_out", seq_out)
+        logger.debug("lm_f_out : {0}".format(lm_f_out))
+        logger.debug("lm_b_out : {0}".format(lm_b_out))
+        logger.debug("seq_out : {0}".format(seq_out))
 
-        cfg.ver_print("tensor X variable", Variable(cuda.FloatTensor([sample.X])))
+        logger.debug("tensor X variable: {0}".format(Variable(cuda.FloatTensor([sample.X]))))
 
         # remove start and stop tags
         seq_out = seq_out[1: -1]
         pred = argmax(seq_out)
 
-        cfg.ver_print("Predicted output", pred)
+        logger.debug("Predicted output {0}".format(pred))
 
         seq_loss = seq_criterion(seq_out, Variable(cuda.LongTensor(sample.Y)))
 
         # to limit the vocab size of the sample sentence ( trick used to improve lm model)
+        # TODO make sure that start and end symbol of sentence gets through this filtering.
         lm_X = [cfg.LM_MAX_VOCAB_SIZE - 1 if (x >= cfg.LM_MAX_VOCAB_SIZE) else x for x in sample.X]
 
-        cfg.ver_print("Sample input", lm_X)
+        logger.debug("Sample input {0}".format(lm_X))
 
-        lm_f_loss = lm_f_criterion(lm_f_out.squeeze(), Variable(cuda.LongTensor(lm_X)[1:]).squeeze())
-        lm_b_loss = lm_b_criterion(lm_b_out.squeeze(), Variable(cuda.LongTensor(lm_X)[:-1]).squeeze())
+        lm_f_loss = lm_f_criterion(lm_f_out.squeeze(), Variable(cuda.LongTensor(lm_X[1:])).squeeze())
+        lm_b_loss = lm_b_criterion(lm_b_out.squeeze(), Variable(cuda.LongTensor(lm_X[:-1])).squeeze())
 
         if cfg.CHAR_LEVEL == "Attention":
             total_loss = seq_loss + Variable(cuda.FloatTensor([gamma])) * (lm_f_loss + lm_b_loss) + char_att_loss
@@ -99,12 +104,12 @@ def train_a_epoch(name, data, model, optimizer, seq_criterion, lm_f_criterion, l
         if cfg.CLIP is not None:
             clip_grad_norm(model.parameters(), cfg.CLIP)
         optimizer.step()
-    evaluator.gen_results()
+    evaluator.classification_report()
 
     return evaluator, model
 
 
-def build_model(train_dataset, dev_dataset, embedding_matrix, model_save_path):
+def build_model(train_dataset, dev_dataset, tag_idx, embedding_matrix, model_save_path):
     # init model
     model = SeqNet(embedding_matrix, isCrossEnt=False, char_level=cfg.CHAR_LEVEL, pos_feat=cfg.POS_FEATURE,
                    dep_rel_feat=cfg.DEP_LABEL_FEATURE, dep_word_feat=cfg.DEP_WORD_FEATURE)
@@ -139,13 +144,15 @@ def build_model(train_dataset, dev_dataset, embedding_matrix, model_save_path):
         train_loader = DataLoader(train_dataset, batch_size=1, shuffle=cfg.RANDOM_TRAIN,
                                   num_workers=28, collate_fn=lambda x: x[0])
 
-        train_eval, model = train_a_epoch("train", train_loader, model, optimizer, seq_criterion,
-                                          lm_f_criterion, lm_b_criterion, att_loss, cfg.LM_GAMMA)
+        train_eval, model = train_a_epoch(name="train", data=train_loader, tag_idx=tag_idx,
+                                          model=model, optimizer=optimizer, seq_criterion=seq_criterion,
+                                          lm_f_criterion=lm_f_criterion, lm_b_criterion=lm_b_criterion,
+                                          att_loss=att_loss, gamma=cfg.LM_GAMMA)
         train_eval.print_results()
 
         dev_loader = DataLoader(dev_dataset, batch_size=1, num_workers=28, collate_fn=lambda x: x[0])
 
-        dev_eval, _, _ = test("dev", dev_loader, model)
+        dev_eval, _, _ = test("dev", dev_loader, tag_idx, model)
 
         dev_eval.verify_results()
 
@@ -167,12 +174,12 @@ def build_model(train_dataset, dev_dataset, embedding_matrix, model_save_path):
     return model
 
 
-def test(name, data, model):
+def test(name, data, tag_idx, model):
     correct = 0
     total = 0
     pred_list = []
     true_list = []
-    evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=None, conll_eval=True)
+    evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
     for sample in tqdm(data, desc=name, total=len(data)):
         # f = np.lib.pad(sample.F, [(1, 1), (0, 0)], 'constant', constant_values=(0, 0))
         np.set_printoptions(threshold=np.nan)
@@ -199,8 +206,7 @@ def test(name, data, model):
         pred_list.append(pred)
         true_list.append(sample.Y)
 
-    evaluator.gen_results()
-    evaluator.print_results()
+    evaluator.classification_report()
 
     return evaluator, pred_list, true_list
 
@@ -240,43 +246,40 @@ def dataset_prep(loadfile=None, savefile=None):
     start_time = time.time()
 
     if loadfile:
-        print("Loading corpus and Embedding Matrix ...")
-        corpus, embedding_matrix = pickle.load(open(loadfile, "rb"))
-        corpus.gen_data(cfg.PER, cfg.TRAIN_PER)
-        zero_ids = np.where(~embedding_matrix.any(axis=1))[0]
-        embedding_matrix[zero_ids] = np.random.uniform(-0.01, 0.01, (1, embedding_matrix.shape[1]))
-
+        print("Loading corpus ...")
+        corpus = pickle.load(open(loadfile, "rb"))
+        corpus.gen_data(cfg.PER)
     else:
-        print("Preparing Embedding Matrix ...")
-        embedding_matrix, word_index, char_index = prepare_embeddings(replace_digit=cfg.REPLACE_DIGITS)
         print("Loading Data ...")
-        corpus = Manager(load_feat=True, word_index=word_index, char_index=char_index)
-        corpus.gen_data(cfg.PER, cfg.TRAIN_PER)
+        corpus = WLPDataset(gen_feat=True)
+        corpus.gen_data(cfg.PER)
 
-    if savefile:
-        print("Saving corpus and embedding matrix ...")
-        pickle.dump((corpus, embedding_matrix), open(savefile, "wb"))
+        if savefile:
+            print("Saving corpus and embedding matrix ...")
+            pickle.dump(corpus, open(savefile, "wb"))
 
     end_time = time.time()
     print("Ready. Input Process time: {0}".format(end_time - start_time))
 
-    return corpus, embedding_matrix
+    return corpus
 
 
-def single_run(corpus, embedding_matrix, index, title, overwrite, only_test=False):
+def single_run(corpus, index, title, overwrite, only_test=False):
     model_save_path = os.path.join(cfg.MODEL_SAVE_DIR, title + ".m")
     if not only_test:
-        the_model = build_model(corpus.train, corpus.dev, embedding_matrix, model_save_path)
+        the_model = build_model(corpus.train, corpus.dev, corpus.tag_idx, corpus.embedding_matrix, model_save_path)
     else:
         the_model = torch.load(model_save_path)
 
     print("Testing ...")
     test_loader = DataLoader(corpus.test, batch_size=1, num_workers=28, collate_fn=lambda x: x[0])
-    test_eval, pred_list, true_list = test("test", test_loader, the_model)
+    test_eval, pred_list, true_list = test("test", test_loader, corpus.tag_idx, the_model)
 
     print("Writing Brat File ...")
-    bratfile_full = BratFile(cfg.PRED_BRAT_FULL + title, cfg.TRUE_BRAT_FULL + title)
-    bratfile_inc = BratFile(cfg.PRED_BRAT_INC + title, cfg.TRUE_BRAT_INC + title)
+    bratfile_full = BratFile(cfg.PRED_BRAT_FULL + title, cfg.TRUE_BRAT_FULL + title, corpus.tag_idx)
+    bratfile_inc = BratFile(cfg.PRED_BRAT_INC + title, cfg.TRUE_BRAT_INC + title, corpus.tag_idx)
+
+    # convert idx to label
 
     bratfile_full.from_labels([corpus.to_words(sample.X[1:-1]) for sample in corpus.test],
                               [sample.P for sample in corpus.test],
@@ -341,7 +344,8 @@ def current_config():
 
     return s
 
-if __name__ == '__main__':
+
+def main(nrun=1):
     args = build_cmd_parser()
 
     if args.train_per is not None:
@@ -353,19 +357,35 @@ if __name__ == '__main__':
     cfg.DEP_LABEL_FEATURE = args.dep_label
     cfg.DEP_WORD_FEATURE = args.dep_word
     cfg.LM_GAMMA = args.lm_gamma
+    for run in range(nrun):
+        dataset = dataset_prep(loadfile=cfg.DB_WITH_FEATURES)
+        cfg.CATEGORIES = len(dataset.tag_idx.keys())
+        i = 0
 
-    dataset, emb_mat = dataset_prep(loadfile=cfg.DB_WITH_POS_DEP)
-    i = 0
+        if cfg.CHAR_LEVEL != "None":
+            cfg.CHAR_VOCAB = len(dataset.char_index.items())
 
-    if cfg.CHAR_LEVEL != "None":
-        cfg.CHAR_VOCAB = len(dataset.char_index.items())
+        if cfg.POS_FEATURE == "Yes":
+            cfg.POS_VOCAB = len(dataset.pos_ids)
+        if cfg.DEP_LABEL_FEATURE == "Yes":
+            cfg.REL_VOCAB = len(dataset.rel_ids)
+        if cfg.DEP_WORD_FEATURE == "Yes":
+            cfg.DEP_WORD_VOCAB = dataset.embedding_matrix.shape[0]
 
-    if cfg.POS_FEATURE == "Yes":
-        cfg.POS_VOCAB = len(dataset.pos_ids)
-    if cfg.DEP_LABEL_FEATURE == "Yes":
-        cfg.REL_VOCAB = len(dataset.rel_ids)
-    if cfg.DEP_WORD_FEATURE == "Yes":
-        cfg.DEP_WORD_VOCAB = emb_mat.shape[0]
+        print(current_config())
+        test_ev = single_run(dataset, i, args.filename, overwrite=False, only_test=False)
 
-    print(current_config())
-    test_ev = single_run(dataset, emb_mat, i, args.filename, overwrite=False)
+
+def setup_logging():
+    handler = colorlog.StreamHandler(stream=sys.stdout)
+    handler.setFormatter(colorlog.ColoredFormatter(
+        '%(log_color)s%(levelname)s:%(name)s:%(message)s'))
+
+    root = colorlog.getLogger()
+    root.setLevel('DEBUG')
+    root.addHandler(handler)
+
+
+if __name__ == '__main__':
+    # setup_logging()
+    main(2)
