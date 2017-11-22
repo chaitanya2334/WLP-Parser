@@ -2,7 +2,7 @@ from conlleval import start_of_chunk, end_of_chunk
 
 
 class BratFile(object):
-    def __init__(self, pred_name, true_name):
+    def __init__(self, pred_name, true_name, label2id):
         # public
         self.true_txt_fname = true_name + '.txt'
         self.true_ann_fname = true_name + '.ann'
@@ -14,6 +14,10 @@ class BratFile(object):
         self.__clear_file(self.true_ann_fname)
         self.__clear_file(self.pred_txt_fname)
         self.__clear_file(self.pred_ann_fname)
+
+        self.label2id = label2id
+
+        self.id2label = {v: k for k, v in self.label2id.items()}
 
         # private
         self.__start_true = 0
@@ -78,24 +82,9 @@ class BratFile(object):
             else:
                 self.writer(sent_words, sent_true, sent_pred, pno, ignore_label)
 
-    @staticmethod
-    def convert_2_text(list2d):
-        res = []
-        for row in list2d:
-            ret = []
-            for bin_label in row:
-                if bin_label == 0:
-                    ret.append('B-Action')
-                elif bin_label == 1:
-                    ret.append('I-Action')
-                elif bin_label == 2:
-                    ret.append('O')
-                else:
-                    raise ValueError("Incorrect label number")
+    def convert_2_text(self, list2d):
+        return [[self.id2label[idx] for idx in list1d]for list1d in list2d]
 
-            res.append(ret)
-
-        return res
 
     ###################################### PRIVATE METHODS #############################################################
     def __write_ann(self, ann, words, labels, ignore_label, start, end, sent_pad, tag_id):
