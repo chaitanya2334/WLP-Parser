@@ -3,8 +3,6 @@ import re
 from gensim.models import Word2Vec, KeyedVectors
 from keras.preprocessing.text import Tokenizer
 from torch import LongTensor, cuda
-
-from corpus.Manager import Manager, Data
 import config as cfg
 import numpy as np
 import itertools
@@ -17,9 +15,9 @@ def gen_list2id_dict(list_, min_freq=-1, insert_words=None, lowercase=False, rep
     """
     counter = collections.Counter()
     for item in list_:
-        if lowercase == True:
+        if lowercase:
             item = item.lower()
-        if replace_digits == True:
+        if replace_digits:
             item = re.sub(r'\d', '0', item)
         counter.update(item.strip().split())
 
@@ -35,67 +33,6 @@ def gen_list2id_dict(list_, min_freq=-1, insert_words=None, lowercase=False, rep
             list2id[word] = len(list2id)
 
     return list2id
-
-
-def prepare_embeddings(use_norm=False, replace_digit=True, load_bin=True, support_start_stop=True):
-    corpus = Manager()
-
-    # get all the sentences each sentence is a sequence of words (list of words)
-    sent_iter = corpus.load_tokenized_sents(corpus.load_textfiles(cfg.ARTICLES_FOLDERPATH))
-
-    if replace_digit:
-        sent_iter = corpus.replace_num(sent_iter)
-
-    # train a skip gram model to generate word vectors. Vectors will be of dimension given by 'size' parameter.
-    print("         Loading Word2Vec ...")
-    if load_bin:
-        print("                     Loading a Massive File ...")
-        skip_gram_model = KeyedVectors.load_word2vec_format(cfg.PUBMED_AND_PMC_W2V_BIN, binary=True)
-    else:
-        skip_gram_model = Word2Vec(sentences=sent_iter, size=cfg.EMBEDDING_DIM, sg=1, window=10, min_count=1, workers=4)
-
-    cfg.ver_print("word2vec emb size", skip_gram_model.vector_size)
-    # TODO fix tokenizer. Incorrect values.
-
-    # this is fine. this is a hack. i took away the tokenizing part of this class. i use it just to create the word index.
-    tokenizer = Tokenizer(char_level=True)
-    sent_iter_flat = list(itertools.chain.from_iterable(sent_iter))
-
-    list_of_chars = list(itertools.chain.from_iterable([list(word) for word in sent_iter_flat]))
-
-    tokenizer.fit_on_texts(sent_iter)
-
-    word_index = tokenizer.word_index
-
-    char_index = gen_list2id_dict(list_of_chars, insert_words=['<w>', '</w>', '<s>', '</s>'])
-
-    cfg.CHAR_VOCAB = len(char_index.items())
-
-    if support_start_stop:
-        word_index['<s>'] = len(word_index)+1
-        word_index['</s>'] = len(word_index)+1
-
-    with open('test_tokenizer.txt', 'w', encoding='utf-8') as out:
-        out.writelines([item + ' ' + str(word_index[item]) + '\n' for item in sent_iter_flat])
-
-    embedding_matrix = np.zeros((len(word_index) + 1, cfg.EMBEDDING_DIM))
-    embedding_matrix = np.random.uniform(low=-0.01, high=0.01, size=(len(word_index) + 1, cfg.EMBEDDING_DIM))
-    print("         Populating Embedding Matrix ...")
-    with open(cfg.OOV_FILEPATH, 'w') as f:
-        f.write("Out of Vocabulary words\n")
-
-    for word, i in word_index.items():
-        try:
-            embedding_vector = skip_gram_model[word]
-            embedding_matrix[i] = embedding_vector
-        except KeyError:
-            # not found in vocab
-            # words not found in embedding index will be all-zeros.
-            with open(cfg.OOV_FILEPATH, 'a') as f:
-                f.write('{0}\n'.format(word))
-            cfg.ver_print('out of vocabulary word', word)
-
-    return embedding_matrix, word_index, char_index
 
 
 # this will convert a batch of variable length samples into padded tensor.
