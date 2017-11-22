@@ -2,7 +2,7 @@ from unittest import TestCase
 
 from torch.utils.data import DataLoader
 
-from corpus.Manager import Manager
+from corpus.Manager import WLPDataset
 from preprocessing.text_processing import prepare_embeddings
 import config as cfg
 
@@ -10,7 +10,7 @@ import config as cfg
 class TestManager(TestCase):
     def test_pytorch_dataloader(self):
         embedding_matrix, word_index, char_index = prepare_embeddings(replace_digit=cfg.REPLACE_DIGITS)
-        dataset = Manager(word_index, char_index)
+        dataset = WLPDataset(word_index, char_index)
 
         def collate(batch):
             return batch

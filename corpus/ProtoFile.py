@@ -1,24 +1,31 @@
-# TODO Do a code review
 import os
+import pickle
 from collections import namedtuple, Counter
 
 import nltk
-from nltk.tokenize import sent_tokenize
-import config as cfg
+from nltk.parse.stanford import StanfordDependencyParser
+from nltk.tokenize.moses import MosesTokenizer
+from tqdm import tqdm
 
-import re
+import config as cfg
+import features_config as feat_cfg
+
 import io
 import logging
 
-from corpus.TextFile import TextFile
+from preprocessing.feature_engineering.pos import PosTagger
 
-Tag = namedtuple("Tag", "tag_id, tag_name, tag_name_bio, start, end, word")
+logger = logging.getLogger(__name__)
+
+Tag = namedtuple("Tag", "tag_id, tag_name, start, end, words")
 Link = namedtuple("Link", "l_id, l_name, arg1, arg2")
 
 
-class ProtoFile(TextFile):
-    def __init__(self, filename, bio_encoding=True):
-        super().__init__(filename)
+# its a good idea to keep a datastructure like
+# list of sentences, where each sentence is a list of words : [[word1, word2, word3,...], [word1, word2...]]
+
+class ProtoFile:
+    def __init__(self, filename, gen_features=False):
         self.filename = filename
         self.basename = os.path.basename(filename)
         self.protocol_name = self.basename
@@ -28,89 +35,150 @@ class ProtoFile(TextFile):
         with io.open(self.text_file, 'r', encoding='utf-8', newline='') as t_f, io.open(self.ann_file, 'r',
                                                                                         encoding='utf-8',
                                                                                         newline='') as a_f:
-            self.text = t_f.readlines()
-            self.full_text = "".join(self.text)
+            self.tokenizer = MosesTokenizer()
+            self.lines = t_f.readlines()  # list of strings, each string is a sentence
+            self.text = "".join(self.lines)  # full text
             self.ann = a_f.readlines()
             self.status = self.__pretest()
             self.links = []
+
         if self.status:
+            sents = [self.tokenizer.tokenize(line) for line in self.lines]  # generate list of list of words
+            self.heading = sents[0]
+            self.sents = sents[1:]
             self.tags = self.__parse_tags()
             self.unique_tags = set([tag.tag_name for tag in self.tags])
-
-            self.sents = self.get_sents()
-            self.nsents = len(self.sents)
             self.__std_index()
             self.__parse_links()
             self.tag_0_id = 'T0'
             self.tag_0_name = 'O'
-            self.word_tag_per_sent, self.tokens, self.words, self.token_sents = self.populate_tokens(bio_encoding)
+            self.tokens2d = self.gen_tokens(labels_allowed=cfg.LABELS)
+            if gen_features:
+                self.pos_tags = self.__gen_pos_stanford()
+                self.conll_deps = self.__gen_dep()
 
-    def cnt_sent(self):
-        if len(self.text) == 2:
-            sents = sent_tokenize(self.text[1])
-            return len(sents)
-        else:
-            return 0
+    def get_deps(self):
+        return [nltk.DependencyGraph(conll_dep, top_relation_label='root') for conll_dep in self.conll_deps]
+
+    def __gen_dep(self):
+        d_cache = os.path.join(cfg.DEP_PICKLE_DIR, self.protocol_name + '.p')
+        try:
+            # loading saved dep parsers
+            conll_deps = pickle.load(open(d_cache, 'rb'))
+
+        except (pickle.UnpicklingError, EOFError, FileNotFoundError):
+            dep = StanfordDependencyParser(path_to_jar=feat_cfg.STANFORD_PARSER_JAR,
+                                           path_to_models_jar=feat_cfg.STANFORD_PARSER_MODEL_JAR,
+                                           java_options="-mx3000m")
+
+            # adding pos data to dep parser speeds up dep generation even further
+            dep_graphs = [sent_dep for sent_dep in dep.tagged_parse_sents(self.pos_tags)]
+
+            # save dependency graph in conll format
+            conll_deps = [next(deps).to_conll(10) for deps in dep_graphs]
+
+            pickle.dump(conll_deps, open(d_cache, 'wb'))
+
+        return conll_deps
+
+    def __gen_pos_stanford(self):
+        pos = PosTagger(feat_cfg.STANFORD_POS_JAR_FILEPATH, feat_cfg.STANFORD_MODEL_FILEPATH,
+                        cache_filepath=None)
+        p_cache = os.path.join(cfg.POS_PICKLE_DIR, self.protocol_name + '.p')
+        try:
+            pos_tags = pickle.load(open(p_cache, 'rb'))
+        except (pickle.UnpicklingError, EOFError, FileNotFoundError):
+            pos_tags = pos.tag_sents(self.sents)
+            # for some reason stanford parser deletes words that are just underscores, and
+            # dependency parser cannot deal with an empty text in pos tagger, so the below hack.
+            pos_tags = [[pos_tag if pos_tag[0] else ('_', pos_tag[1]) for pos_tag in p1d] for p1d in pos_tags]
+            pickle.dump(pos_tags, open(p_cache, 'wb'))
+
+
+        return pos_tags
 
     def cnt_words(self):
-        if len(self.text) == 2:
-            w = self.text[1].split()
-            return len(w)
+        if self.status:
+            w = sum([len(sent) for sent in self.sents[1:]])
+            return w
 
-    def count_tags(self, headers):
-        tag_counts = dict()
+            # generic counter of entities, supported by a function callback fn that depends on tag's properties
+
+    # ent_counter returns a dict = {'ENTITY1' : summation for all tags of 'ENTITY1'(fn(tag))}
+    def __ent_counter(self, ent_types, fn):
+        tag_cnts = dict()
         if self.status:
             for tag in self.tags:
-                if tag.tag_name in headers:
-                    if tag.tag_name in tag_counts:
-                        tag_counts[tag.tag_name] += 1
+                if tag.tag_name in ent_types:
+                    if tag.tag_name in tag_cnts:
+                        tag_cnts[tag.tag_name] += fn(tag)
                     else:
-                        tag_counts[tag.tag_name] = 1
-            for link in self.links:
-                if link.l_name in headers:
-                    if link.l_name in tag_counts:
-                        tag_counts[link.l_name] += 1
-                    else:
-                        tag_counts[link.l_name] = 1
-        return tag_counts
+                        tag_cnts[tag.tag_name] = fn(tag)
 
-    def count_span_len(self):
-        s_len = dict()
-        if self.status:
-            for tag in self.tags:
-                if tag.tag_name in s_len:
-                    s_len[tag.tag_name] += len(tag.word.split())
-                else:
-                    s_len[tag.tag_name] = len(tag.word.split())
-        return s_len
+        return tag_cnts
+
+    def ent_cnt(self, ent_types):
+        tag_cnts = self.__ent_counter(ent_types, lambda x: 1)
+
+        return tag_cnts
+
+    def ent_w_cnt(self, ent_types):
+        def cnt_words(tag):
+            string = tag.word
+            words = nltk.word_tokenize(string)
+            return len(words)
+
+        tag_cnts = self.__ent_counter(ent_types, cnt_words)
+
+        return tag_cnts
+
+    # calculates the total no of chars (including spaces) for each entity in a protocol file
+    def ent_span_len(self, ent_types):
+        tag_cnts = self.__ent_counter(ent_types, lambda x: len(x.word))
+
+        return tag_cnts
 
     def __std_index(self):
-        def get_tag(e_id):
-            for it, _line in enumerate(self.ann):
-                if _line.find(e_id) == 0:
-                    logging.info(_line.rstrip())
-                    spl = _line.split()
-
-                    return spl[1].split(':')[1]
+        # modifies the ann text such that all
+        # Exx Action:Txx Using:Exx convert to
+        # Exx Action:Txx Using:Tyy
+        # so that they are easier to resolve later
+        # given that Txx can be independently resolved,
+        # whereas Exx sometimes have forward and backward dependencies
+        def search_tag(e_id):
+            if e_id[0] == 'E':
+                for _line in self.ann:
+                    if _line.find(e_id) == 0:
+                        logging.info(_line.rstrip())
+                        spl = _line.split()
+                        return spl[1].split(':')[1]
+            else:
+                return e_id
 
         def replace_Es(string):
-            if string[0] == 'E' or string[0] == 'R':
+            if string[0] == 'E':
                 sp_res = string.split()
-                for sp in sp_res[1:]:
+                front_half = sp_res[0]
+                args = [tuple(sp.split(':')) for sp in sp_res[1:]]
+            elif string[0] == 'R':
+                sp_res = string.split()
+                r_id = sp_res[0]
+                r_name = sp_res[1]
+                front_half = " ".join([r_id, r_name])
+                args = [tuple(sp.split(':')) for sp in sp_res[2:]]
+            else:
+                # nothing to replace
+                return string
 
-                    rel = sp.split(':')
-                    if len(rel) == 2 and rel[1][0] == 'E':
-                        logging.info(["Before:", string])
-                        e_id = rel[1]
+            # args = [(Action, Txx), (Using, Exx)]
+            replaced_args = [(rel_name, search_tag(tid)) for rel_name, tid in args]
+            # replaced_args = [(Action, Txx), (Using, Txx)]
+            args_str = " ".join([":".join(item) for item in replaced_args])
+            # args_str = "Action:Txx Using:Txx"
 
-                        # e_id = E23
-                        t_id = get_tag(e_id)
+            string = " ".join([front_half, args_str])
+            # string = "Exx Action:Txx Using:Txx"
 
-                        # t_id = T73
-
-                        string = string.replace(e_id, t_id)
-                        logging.info(["After:", string])
-                        logging.info("\n")
             return string
 
         for i, line in enumerate(self.ann):
@@ -121,17 +189,17 @@ class ProtoFile(TextFile):
         Returns false if annotation file or text file is empty
         :return:
         """
-        if len(self.text) < 2:
-            logging.debug(self.text)
+        if len(self.lines) < 2:
+            logger.debug(self.sents)
             return False
         if len(self.ann) < 1:
-            logging.debug(self.ann)
+            logger.debug(self.ann)
             return False
         return True
 
     def __parse_links(self):
         if self.links:
-            logging.error("Already parsed, I am not parsing again")
+            logger.error("Already parsed, I am not parsing again")
             return
         for line in [t for t in self.ann if (t[0] == 'E' or t[0] == 'R')]:
             if line[0] == 'E':
@@ -141,47 +209,34 @@ class ProtoFile(TextFile):
                 r = self.__parse_r(line)
                 self.links.append(r)
 
+    def get_tag_by_id(self, tid):
+        if tid[0] == 'T':
+            ret = [tag for tag in self.tags if tag.tag_id == tid]
+        else:
+            ret = [link.arg1 for link in self.links if link.l_id == tid]
+        return ret[0]
+
     def __parse_e(self, e):
         links = []
-
-        def get_tag(arg_id):
-
-            l = [tag for tag in self.tags if tag.tag_id == arg_id]
-            return l[0]
-
         temp = e.rstrip()
         temp = temp.split()
         e_id = temp[0]
         arg1_id = temp[1].split(':')[1]
 
-        arg1_tag = get_tag(arg1_id)
+        arg1_tag = self.get_tag_by_id(arg1_id)
         if temp[2:]:
             for rel in temp[2:]:
                 r_name, arg2_id = rel.split(':')
-                arg2_tag = get_tag(arg2_id)
+                arg2_tag = self.get_tag_by_id(arg2_id)
                 links.append(Link(e_id, r_name, arg1_tag, arg2_tag))
 
         return links
 
     def __parse_r(self, r):
-        def get_tag(arg):
-            tag_id = arg.split(':')[1]
-
-            if tag_id[0] == 'T':
-                l = [tag for tag in self.tags if tag.tag_id == tag_id]
-            else:
-                l = [_link.arg1 for _link in self.links if _link.l_id == tag_id]
-            return l[0]
-
-        temp = r.rstrip()
-        temp = temp.split()
-        r_id = temp[0]
-        r_name = temp[1]
-        arg1 = temp[2]
-        arg2 = temp[3]
-        arg1_tag = get_tag(arg1)
-        arg2_tag = get_tag(arg2)
-        link = Link(r_id, r_name, arg1_tag, arg2_tag)
+        r_id, r_name, arg1, arg2 = r.rstrip().split()
+        arg1_id = arg1.split(':')[1]
+        arg2_id = arg2.split(':')[1]
+        link = Link(r_id, r_name, self.get_tag_by_id(arg1_id), self.get_tag_by_id(arg2_id))
         return link
 
     def __parse_tags(self):
@@ -198,7 +253,12 @@ class ProtoFile(TextFile):
             else:
                 tag_name, start, _, _, end = temp[1].split()
 
-            t = Tag(tag_id=temp[0], tag_name=tag_name, tag_name_bio='', start=int(start), end=int(end), word=temp[2])
+            t = Tag(tag_id=temp[0],
+                    tag_name=tag_name,
+                    start=int(start),
+                    end=int(end),
+                    words=self.tokenizer.tokenize(temp[2]))
+
             tags.append(t)
         return tags
 
@@ -207,182 +267,71 @@ class ProtoFile(TextFile):
         if s2 <= s1 and e1 <= e2:
             return True
         elif not (s2 >= s1 and e2 >= e1 or s2 <= s1 and e2 <= e1):
-            logging.debug("partial overlap: {0} {1} {2} {3}".format(s1, e1, s2, e2))
+            logger.debug("partial overlap: {0} {1} {2} {3}".format(s1, e1, s2, e2))
             return False
         return False
 
-    def get_tag(self, word, start, end):
-        # self.tag = [(tag_id, tag_name, start, end, word)] named tuple
+    @staticmethod
+    def make_bio(tag):
+        # returns [(word, label), (word, label)]
+        # where the label is encoded with B, I, or O based on its position in the tag
+        # tag = Tag(tag_id, tag_name, start, end, words)
+
+        labels = ['B-' + tag.tag_name]
+        labels += ['I-' + tag.tag_name for _ in tag.words[1:]]
+        return list(zip(tag.words, labels))
+
+    def get_tag_by_start(self, start):
         for tag in self.tags:
+            if tag.start == start:
+                return tag
 
-            if word in tag.word and self.__contain(start, end, tag.start, tag.end):
-                if tag.start == start:
-                    tag_name_bio = 'B-'
-                else:
-                    tag_name_bio = 'I-'
-                return Tag(tag_id=tag.tag_id, tag_name=tag.tag_name, tag_name_bio=tag_name_bio, start=start, end=end,
-                           word=word)
+        logging.debug("Protocol={0}: No tag found with start == {1}".format(self.protocol_name, start))
+        return None
 
-            elif self.__contain(start, end, tag.start, tag.end):
-                logging.debug("odd result:{0}, {1}, {2}, {3}".format(word, start, end, tag))
+    def gen_tokens(self, labels_allowed=None):
+        # for a list of list of words returns a list of list of tokens
+        # [[Token(word, label), Token(word, label)], [Token(word, label), Token(word, label)]]
+        # BIO encoding
 
-        return Tag(tag_id=self.tag_0_id, tag_name=self.tag_0_name, tag_name_bio='', start=start, end=end, word=word)
+        start = len(self.sents[0])
+        ret = []
+        for sent in self.sents:
+            word_label_pairs = []
+            wi = 0
+            # for every word in the sentence
+            while wi < len(sent):
+                word = sent[wi]
+                start = self.text.find(word, start)
 
-    def extract_data_per_sent(self, with_bio=False):
-        # extract a pair of list of list of words and tags
-        # eg text:    This is a Sentence. This is also a sentence.
-        # eg output:  (words, tags)
-        # eg output:  ([[This, is, a, Sentence],
-        #              [This, is, also, a, sentence]],
-        #              [[Tag(), Tag(), Tag(), Tag()],
-        #              [Tag(), Tag(), Tag(), Tag(), Tag()]])
+                tag = self.get_tag_by_start(start)
+                # we dont want tags that are not allowed
+                if labels_allowed:
+                    if tag and tag.tag_name not in labels_allowed:
+                        tag = None
 
-        start = len(self.text[0])
-        end = start
-        # words = self.text[1].split()
-        sents = self.sents
-        sent_tags = []
-        for sent in sents:
+                if tag:
+                    # tag was found
+                    # make bio returns a list of (word, label) pairs which we extend to the word_label_pairs list.
+                    logging.debug("Protocol={0}: Tag was found = {1}".format(self.protocol_name, tag))
+                    word_label_pairs.extend(self.make_bio(tag))
+                    start = tag.end
+                    wi += len(tag.words)
 
-            words = self._word_tokenizer(sent, to_lowercase=False)
-            word_tag = []
-            tags_name_only = []
-            for word in words:
+                if not tag:
+                    # its likely that there is no tag for this word
+                    logging.debug("Protocol={0}: Tag was not found at word = {1}".format(self.protocol_name, word))
+                    word_label_pairs.append((word, 'O'))
+                    start += len(word)
+                    wi += 1
 
-                start = self.full_text.find(word, end)
-                end = start + len(word)
-                tag = self.get_tag(word, start, end)
-                if with_bio:
-                    tag_name = tag.tag_name_bio + tag.tag_name
+            tokens = [Token(word, label) for word, label in word_label_pairs]
 
-                else:
-                    tag_name = tag.tag_name
+            ret.append(tokens)
 
-                word_tag.append((word, tag_name))
-
-            sent_tags.append(word_tag)
-
-        # split word_tag
-        col_words = []
-        col_tags = []
-        for sent in sent_tags:
-            if sent:
-                words, tags = zip(*sent)
-                col_words.append(words)
-                col_tags.append(tags)
-
-        return col_words, col_tags
-
-    def extract_tags_per_sent(self):
-        # extract a list of list of tags.
-        # eg text:    This is a Sentence. This is also a sentence.
-        # eg output:  [[Tag(), Tag(), Tag(), Tag()],
-        #              [Tag(), Tag(), Tag(), Tag(), Tag()]]
-
-        start = len(self.text[0])
-        end = start
-        # words = self.text[1].split()
-        sents = self.sents
-        sent_tags = []
-        for sent in sents:
-            words = self._word_tokenizer(sent, to_lowercase=False)
-            word_tag = []
-            tags_name_only = []
-            for word in words:
-                start = self.full_text.find(word, end)
-                end = start + len(word)
-
-                tag = self.get_tag(word, start, end)
-                word_tag.append((word, tag))
-                tags_name_only.append(tag.tag_name)
-            sent_tags.append(tags_name_only)
-        return sent_tags
-
-    def sent_spans(self):
-        start = len(self.text[0])
-        end = start
-        # words = self.text[1].split()
-        sents = self.sents
-        res = []
-        for sent in sents:
-            ss = end
-            words = self._word_tokenizer(sent)
-            for word in words:
-                start = self.full_text.find(word, end)
-                end = start + len(word)
-            se = end
-            res.append((ss, se))
-        return res
-
-    def extract_word_tags_per_sent(self):
-        start = len(self.text[0])
-        end = start
-        # words = self.text[1].split()
-        sents = self.sents
-        sent_tags = []
-        for sent in sents:
-            words = self._word_tokenizer(sent)
-            word_tag = []
-
-            for word in words:
-                start = self.full_text.find(word, end)
-                end = start + len(word)
-
-                tag = self.get_tag(word, start, end)
-
-                word_tag.append((word, tag))
-
-            if word_tag:
-                sent_tags.append(word_tag)
-
-        return sent_tags
-
-    def extract_tags(self):
-        start = len(self.text[0])
-        end = start
-        # words = self.text[1].split()
-        words = self._word_tokenizer(self.text[1], to_lowercase=True)
-        word_tag = []
-        tags_name_only = []
-
-        for word in words:
-            start = (self.text[0] + self.text[1]).find(word, end)
-            end = start + len(word)
-
-            tag = self.get_tag(word, start, end)
-
-            word_tag.append((word, tag))
-            tags_name_only.append(tag.tag_name)
-
-        # ("Add", Tag("Action-Verb", ...)) , "Action-Verb"
-        return word_tag, tags_name_only
+        return ret
 
     # ###################interface from Article#############################################
-    # TODO clean this up
-    def populate_tokens(self, bio_encoding):
-        word_tags, _ = self.extract_tags()
-        word_tag_per_sent = self.extract_word_tags_per_sent()
-        tokens = [Token(word, (tag.tag_name + tag.tag_name_bio if bio_encoding else tag.tag_name))
-                  for word, tag in word_tags if tag.tag_name in cfg.LABELS + [cfg.NO_NE_LABEL]]
-        sents = self.extract_word_tags_per_sent()
-
-        token_sents = [[Token(word, (tag.tag_name_bio + tag.tag_name if bio_encoding else tag.tag_name))
-                  for word, tag in sent if tag.tag_name in cfg.LABELS + [cfg.NO_NE_LABEL]] for sent in sents]
-
-        words = ([word for word, tag in word_tags])
-
-        return word_tag_per_sent, tokens, words, token_sents
-
-    def get_content_as_string(self):
-        """Returns the article's content as string.
-        This is not neccessarily identical to the original text content, because multi-whitespaces
-        are replaced by single whitespaces.
-
-        Returns:
-            string (article/document content).
-        """
-        return " ".join([token.word for token in self.tokens])
-
     def get_label_counts(self, add_no_ne_label=False):
         """Returns the count of each label in the article/document.
         Count means here: the number of words that have the label.
@@ -393,9 +342,9 @@ class ProtoFile(TextFile):
             List of tuples of the form (label as string, count as integer).
         """
         if add_no_ne_label:
-            counts = Counter([token.label for token in self.tokens])
+            counts = Counter([token.label for token in self.tokens2d])
         else:
-            counts = Counter([token.label for token in self.tokens \
+            counts = Counter([token.label for token in self.tokens2d \
                               if token.label != cfg.NO_NE_LABEL])
         return counts.most_common()
 
@@ -413,7 +362,6 @@ class ProtoFile(TextFile):
 class Token(object):
     """Encapsulates a token/word.
     Members:
-        token.original: The original token, i.e. the word _and_ the label, e.g. "John/PER".
         token.word: The string content of the token, without the label.
         token.label: The label of the token.
         token.feature_values: The feature values, after they have been applied.
@@ -435,5 +383,5 @@ class Token(object):
 
 
 if __name__ == '__main__':
-    protofile = ProtoFile("simple_input/protocol_31")
-    sents, labels = protofile.extract_data_per_sent(True)
+    pro = ProtoFile("./simple_input/protocol_235")
+    [print([(token.word, token.label) for token in tokens1d]) for tokens1d in pro.tokens2d]

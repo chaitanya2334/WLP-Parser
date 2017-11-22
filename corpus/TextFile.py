@@ -24,7 +24,7 @@ class TextFile(object):
 
         self.txt_fname = filename + '.txt'
         with io.open(self.txt_fname, 'r', encoding='utf-8', newline='') as t_f:
-            self.text = t_f.readlines()
+            self.sents = t_f.readlines()
             self.type = self.get_text_type()
 
     def get_tokenized_sents(self, to_lowercase):
@@ -37,19 +37,19 @@ class TextFile(object):
 
     def get_sents(self):
         if self.type == self.Status.FULL:
-            return sent_tokenize(self.text[1])
+            return sent_tokenize(self.sents[1])
         if self.type == self.Status.SENT:
-            return self.text[1:]
+            return self.sents[1:]
         return None
 
     def get_text_type(self):
-        if len(self.text) < 2:
+        if len(self.sents) < 2:
             logging.debug('{0} file is empty'.format(self.txt_fname))
             return self.Status.EMPTY
-        if len(self.text) == 2:
+        if len(self.sents) == 2:
             logging.debug('{0} file does not split sentences'.format(self.txt_fname))
             return self.Status.FULL
-        if len(self.text) > 2:
+        if len(self.sents) > 2:
             logging.debug('{0} file splits sentences'.format(self.txt_fname))
             return self.Status.SENT
 
