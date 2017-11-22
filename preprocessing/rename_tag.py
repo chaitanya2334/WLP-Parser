@@ -1,7 +1,7 @@
 import glob
 import os
 
-from corpus.Manager import Manager
+from corpus.Manager import WLPDataset
 import config as cfg
 import fileinput
 
@@ -17,7 +17,7 @@ def rename_tag(fpaths, ext=".ann", replace_from="Action-Verb", replace_to="Actio
 
 
 if __name__ == '__main__':
-    corpus = Manager()
+    corpus = WLPDataset()
 
     files = glob.glob(cfg.ARTICLES_FOLDERPATH + "/*.ann")
     rename_tag(files)
