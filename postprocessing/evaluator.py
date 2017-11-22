@@ -4,6 +4,8 @@ import collections
 import numpy as np
 import sys
 
+from tabulate import tabulate
+
 import conlleval
 import os
 import config as cfg
@@ -35,11 +37,7 @@ class Evaluator(object):
 
             # TODO hard coded id2label generation.
             for label in self.label2id:
-                if label == 'B' or label == 'I':
-                    full_label = label + '-' + main_label_name
-                else:
-                    full_label = 'O'
-                self.id2label[self.label2id[label]] = full_label
+                self.id2label[self.label2id[label]] = label
 
         self.conll_format = []
 
@@ -66,7 +64,7 @@ class Evaluator(object):
                 print("Unexpected label id in predictions.")
         self.conll_format.append("")
 
-    def gen_results(self):
+    def gen_summary_results(self):
         p = (float(self.main_correct_count) / float(self.main_predicted_count)) if (
             self.main_predicted_count > 0) else 0.0
         r = (float(self.main_correct_count) / float(self.main_total_count)) if (self.main_total_count > 0) else 0.0
@@ -90,19 +88,29 @@ class Evaluator(object):
 
         if self.label2id is not None and self.conll_eval is True:
             conll_counts = conlleval.evaluate(self.conll_format)
-            conll_metrics_overall, conll_metrics_by_type = conlleval.metrics(conll_counts)
+            self.conll_metrics_overall, self.conll_metrics_by_type = conlleval.metrics(conll_counts)
             results[self.name + "_conll_accuracy"] = float(conll_counts.correct_tags) / float(
                 conll_counts.token_counter)
-            results[self.name + "_conll_p"] = conll_metrics_overall.prec
-            results[self.name + "_conll_r"] = conll_metrics_overall.rec
-            results[self.name + "_conll_f"] = conll_metrics_overall.fscore
+            results[self.name + "_conll_p"] = self.conll_metrics_overall.prec
+            results[self.name + "_conll_r"] = self.conll_metrics_overall.rec
+            results[self.name + "_conll_f"] = self.conll_metrics_overall.fscore
+            results['label_table'] = [[label, metric.prec, metric.rec, metric.fscore, conll_counts.t_found_correct[label]]
+                                      for label, metric in self.conll_metrics_by_type.items()]
 
         self.results = results
         return self.results
 
+    def classification_report(self):
+        self.gen_summary_results()
+        self.print_results()
+
     def print_results(self):
         for key in self.results:
-            print(key + ": " + str(self.results[key]))
+            if key == 'label_table':
+                print(tabulate(self.results[key], headers=['Label', 'Precision', 'Recall', 'Fscore', 'Support'],
+                               tablefmt='psql'))
+            else:
+                print(key + ": " + str(self.results[key]))
 
     def verify_results(self):
         if np.isnan(self.results[self.name + "_cost_sum"]) or np.isinf(self.results[self.name + "_cost_sum"]):
@@ -127,7 +135,11 @@ class Evaluator(object):
             f.write(text + "\n")
             f.write(self.config_desc())
             for key in self.results:
-                f.write(key + ": " + str(self.results[key]) + "\n")
+                if key == 'label_table':
+                    f.write(tabulate(self.results[key], headers=['Label', 'Precision', 'Recall', 'Fscore'],
+                                     tablefmt='psql'))
+                else:
+                    f.write(key + ": " + str(self.results[key]) + "\n")
 
     def write_csv_results(self, csv_filepath, title, overwrite=True):
         # if file doesnt exist or is empty or you want to overwrite the file, write the headers.
