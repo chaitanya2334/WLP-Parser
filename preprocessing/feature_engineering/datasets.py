@@ -47,22 +47,6 @@ def load_all_protocols(folderpath):
     return articles
 
 
-def load_articles(filenames, bio_encoding, end_at=6):
-    """
-    Loads all the protocol files using the root folder path.
-    Args:
-        folderpath: The root folder path
-        end_at: The iteration number to stop at
-
-    Returns:
-        A list of protofile objects
-        :param bio_encoding: 
-    """
-    articles = [Article(filename + ".txt", filename + ".ann", bio_encoding) for filename in filenames]
-
-    return articles
-
-
 def conll_writer(filetrain, filedev, filetest, train=60, dev=20, test=20):
     assert train + dev + test == 100
 
@@ -132,6 +116,8 @@ def load_windows(articles, features=None, nb_skip=0, every_nth_window=0,
     processed_windows = 0
     for article in articles:
         # count how many labels there are in the article
+        assert isinstance(article, ProtoFile)
+
         if article.status:
             print(article.protocol_name)
             count = article.count_labels()
@@ -217,99 +203,10 @@ def generate_examples(windows, nb_append=None, nb_skip=0, verbose=True):
             if nb_append is not None and added == nb_append:
                 break
 
-
-# this was removed to get rid of the unicecode dependency and because the ascii representation
-# of words weren't used anyways
-# def cleanup_unicode(in_str):
-#    """Converts unicode strings to ascii.
-#    The function uses mostly unidecode() and contains some additional mappings for german umlauts.
-#
-#    Args:
-#        in_str: String in UTF-8.
-#    Returns:
-#        String (ascii).
-#    """
-#    result = in_str
-#
-#    mappings = [(u"ü", "ue"), (u"ö", "oe"), (u"ä", "ae"),
-#                (u"Ü", "Ue"), (u"Ö", "Oe"), (u"Ä", "Ae"),
-#                (u"ß", "ss")]
-#    for str_from, str_to in mappings:
-#        result = result.replace(str_from, str_to)
-#
-#    result = unidecode(result)
-#
-#    return result
-
-class Article(object):
-    """Class modelling an article/document from the corpus. It's mostly a wrapper around a list
-    of Token objects."""
-
-    def __init__(self, txtfile, annfile, bio_encoding=True):
-        """Initialize a new Article object.
-        Args:
-            text: The string content of the article/document.
-        """
-        # Adding re.UNICODE with \s gets rid of some stupid special unicode whitespaces
-        # That's neccessary, because otherwise the stanford POS tagger will split words at
-        # these whitespaces and then the POS sequences have different lengths from the
-        # token sequences
-
-        protofile = ProtoFile(txtfile, annfile)
-        self.protocol_name = txtfile
-        self.text = protofile.text
-        word_tags, _ = protofile.extract_tags()
-        self.word_tag_per_sent = protofile.extract_word_tags_per_sent()
-        self.tokens = [Token(word, (tag.tag_name + tag.tag_name_bio if bio_encoding else tag.tag_name))
-                       for word, tag in word_tags if tag.tag_name in cfg.LABELS + [cfg.NO_NE_LABEL]]
-        sents = protofile.extract_word_tags_per_sent()
-
-        self.sents = [[Token(word, (tag.tag_name_bio + tag.tag_name if bio_encoding else tag.tag_name))
-                       for word, tag in sent if tag.tag_name in cfg.LABELS + [cfg.NO_NE_LABEL]] for sent in sents]
-
-        self.words = ([word for word, tag in word_tags])
-
-    def get_content_as_string(self):
-        """Returns the article's content as string.
-        This is not neccessarily identical to the original text content, because multi-whitespaces
-        are replaced by single whitespaces.
-
-        Returns:
-            string (article/document content).
-        """
-        return " ".join([token.word for token in self.tokens])
-
-    def get_label_counts(self, add_no_ne_label=False):
-        """Returns the count of each label in the article/document.
-        Count means here: the number of words that have the label.
-
-        Args:
-            add_no_ne_label: Whether to count how often unlabeled words appear. (Default is False.)
-        Returns:
-            List of tuples of the form (label as string, count as integer).
-        """
-        if add_no_ne_label:
-            counts = Counter([token.label for token in self.tokens])
-        else:
-            counts = Counter([token.label for token in self.tokens \
-                              if token.label != cfg.NO_NE_LABEL])
-        return counts.most_common()
-
-    def count_labels(self, add_no_ne_label=False):
-        """Returns how many named entity tokens appear in the article/document.
-
-        Args:
-            add_no_ne_label: Whether to also count unlabeled words. (Default is False.)
-        Returns:
-            Count of all named entity tokens (integer).
-        """
-        return sum([count[1] for count in self.get_label_counts(add_no_ne_label=add_no_ne_label)])
-
-
 class Window:
     """Encapsulates a small window of text/tokens."""
 
-    def __init__(self, sent, labels, pno, pos, dep):
+    def __init__(self, tokens, pno, pos, dep):
         """Initialize a new Window object.
 
         Args:
@@ -317,7 +214,7 @@ class Window:
                 objects.
         """
         # super(Window, self).__init__("")  # because pylint complains otherwise
-        self.tokens = [Token(word, label) for word, label in zip(sent, labels)]
+        self.tokens = tokens
         self.pno = pno
         self.pos = pos
         self.dep = dep

@@ -5,13 +5,14 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import os
 from collections import Counter, OrderedDict
 
-import features_config as cfg
+from tqdm import tqdm
 
-from preprocessing.feature_engineering.datasets import load_articles
+import features_config as cfg
 
 
 class Unigrams(object):
     """Class to handle the contents of a file containing unigrams."""
+
     def __init__(self, articles, filepath=None, skip_first_n=0, max_count_words=None):
         """Initialize the unigrams list, optionally from a file.
         Args:
@@ -120,13 +121,13 @@ class Unigrams(object):
         counts = Counter()
         self.sum_of_counts = 0
 
-        for i, article in enumerate(articles):
+        for i, article in enumerate(tqdm(articles, desc="Loading top N Unigrams")):
             if article.status:
-                words = [token.word for token in article.tokens \
-                                    if labels is None or token.label in labels]
+                # unroll tokens2d into one large 1d tokens
+                tokens = [item for sublist in article.tokens2d for item in sublist]
+                words = [token.word for token in tokens
+                         if labels is None or token.label in labels]
                 counts.update(words)
-                if verbose and i % 1000 == 0:
-                    print("Article %d" % (i))
 
         most_common = counts.most_common()
         for i, (word, count) in enumerate(most_common):

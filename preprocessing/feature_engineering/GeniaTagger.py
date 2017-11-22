@@ -40,7 +40,6 @@ class GeniaTagger(object):
         process.kill()
 
     def parse_through_file(self, sents):
-
         with open("temp.txt", "w", encoding="utf-8") as f:
             for sent in sents:
                 f.write(sent + "\n")
@@ -52,7 +51,7 @@ class GeniaTagger(object):
         sent = []
 
         with open("out.txt", "r", encoding="utf-8") as out:
-            for line in tqdm(out.readlines()):
+            for line in out.readlines():
                 if line == '\n':
                     ret_sents.append(sent)
                     sent = []
@@ -60,6 +59,8 @@ class GeniaTagger(object):
                     word_tag = Tag(line.split("\t"))
                     sent.append((word_tag.word, word_tag.pos))
 
+        in_file.close()
+        out_file.close()
         return ret_sents
 
     def parse(self, sents):

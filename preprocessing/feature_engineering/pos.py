@@ -92,7 +92,7 @@ class PosTagger(object):
 
     def tag_sents(self, sents):
         ret = []
-        for i, x in tqdm(enumerate(self.batch(sents, 4000)), desc="Loading POS", total=ceil(len(sents)/4000)):
+        for i, x in enumerate(self.batch(sents, 2000)):
             idx, windows = self.chunkify(x, max=200)
             res = self.tagger.tag_sents(windows)
             res = self.rebuild(idx, res)

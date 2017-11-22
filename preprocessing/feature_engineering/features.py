@@ -46,7 +46,6 @@ def create_features(articles, verbose=True):
             print(msg)
 
     # Load the most common unigrams. These will be used as features.
-    print_if_verbose("Loading top N unigrams...")
     ug_all_top = Unigrams(articles, skip_first_n=cfg.UNIGRAMS_SKIP_FIRST_N,
                           max_count_words=cfg.UNIGRAMS_MAX_COUNT_WORDS)
 
@@ -56,26 +55,26 @@ def create_features(articles, verbose=True):
 
     # Create the gazetteer. The gazetteer will contain all names from ug_names that have a higher
     # frequency among those names than among all unigrams (from ug_all).
-    print_if_verbose("Creating gazetteer...")
+    # print_if_verbose("Creating gazetteer...")
 
     # Unset ug_all and ug_names because we don't need them any more and they need quite a bit of
     # RAM.
 
     # Load the mapping of word to brown cluster and word to brown cluster bitchain
-    print_if_verbose("Loading brown clusters...")
+    # print_if_verbose("Loading brown clusters...")
     # brown = BrownClusters(cfg.BROWN_CLUSTERS_FILEPATH)
 
     # Load the mapping of word to word2vec cluster
-    print_if_verbose("Loading W2V clusters...")
+    # print_if_verbose("Loading W2V clusters...")
     # w2vc = W2VClusters(cfg.W2V_CLUSTERS_FILEPATH)
 
     # Load the wrapper for the gensim LDA
-    print_if_verbose("Loading LDA...")
+    # print_if_verbose("Loading LDA...")
     # lda = LdaWrapper(cfg.LDA_MODEL_FILEPATH, cfg.LDA_DICTIONARY_FILEPATH,
     #                 cache_filepath=cfg.LDA_CACHE_FILEPATH)
 
     # Load the wrapper for the stanford POS tagger
-    print_if_verbose("Loading POS-Tagger...")
+    # print_if_verbose("Loading POS-Tagger...")
     pos = PosTagger(cfg.STANFORD_POS_JAR_FILEPATH, cfg.STANFORD_MODEL_FILEPATH,
                     cache_filepath=None)
 
@@ -178,10 +177,10 @@ class DepTypeFeatures(object):
         return rels
 
     def convert_window(self, window):
-        window.dep, dep_graph = tee(window.dep)
+        dep_graph = window.dep
         # dep_graph = self.dependency_parse(window)
 
-        t = list(next(dep_graph).triples())
+        t = dep_graph.triples()
 
         result = []
         for token in window.tokens:
@@ -231,9 +230,9 @@ class DepGraphFeatures(object):
         return gov
 
     def convert_window(self, window):
-        window.dep, dep_graph = tee(window.dep)
+        dep_graph = window.dep
         # dep_graph = self.dependency_parse(window)
-        t = list(next(dep_graph).triples())
+        t = dep_graph.triples()
 
         result = []
         for token in window.tokens:
@@ -319,9 +318,9 @@ class LemmatizerFeatures(object):
         else:
             orig_str = "|".join([token.word for token in window.tokens])
             pos_str = "|".join([word for word, _ in pos_tags])
-            print("[Info] Stanford POS tagger got sequence of length %d, returned " \
-                  "POS-sequence of length %d. This sometimes happens with special unicode " \
-                  "characters. Returning empty list instead." % (len(window.tokens), len(pos_tags)))
+            print("[Info] In Protocol {0}: Stanford POS tagger got sequence of length {1}, returned "
+                  "POS-sequence of length {2}. This sometimes happens with special unicode "
+                  "characters. Returning empty list instead.".format(window.pno, len(window.tokens), len(pos_tags)))
             print("[Info] Original sequence was:", orig_str)
             print("[Info] Tagged sequence      :", pos_str)
 
