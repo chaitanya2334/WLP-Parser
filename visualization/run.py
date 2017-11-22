@@ -1,4 +1,6 @@
 import sys
+
+import pandas
 from sklearn import manifold, datasets
 from sklearn.manifold import TSNE
 from sklearn.metrics.pairwise import pairwise_distances
@@ -36,32 +38,49 @@ def preprocess(X, y, perplexity=30, metric='euclidean'):
     pij = squareform(pij)
     return n_points, pij, y
 
+def points_from_window(df, xmin, xmax, ymin, ymax):
+    df_win = df.ix[(xmin <= df['x']) & (df['x'] <= xmax) & (ymin <= df['y']) & (df['y'] <= ymax)]
+    return df_win
 
-def scatter_points(x, y):
+def scatter_points(x, y, labels):
     # We create a scatter plot.
-    f = plt.figure(figsize=(8, 8))
-    ax = plt.subplot(aspect='equal')
+    df = pandas.DataFrame({'x': x[:, 0], 'y': x[:, 1], 'words': y[:], 'labels': labels})
+    df.to_csv("tsne_data.csv", sep=" ", columns=["x", "y", "words", "labels"], index=False)
 
-    sc = ax.scatter(x[:, 0], x[:, 1], lw=0, s=40)
+    df_win1 = points_from_window(df, xmin=5, xmax=10, ymin=5, ymax=10)
+    df_win2 = points_from_window(df, xmin=-15, xmax=-10, ymin=-20, ymax=-15)
+
+    df_win1.to_csv("win1.csv", sep=" ", columns=["x", "y", "words", "labels"], index=False)
+    df_win2.to_csv("win2.csv", sep=" ", columns=["x", "y", "words", "labels"], index=False)
+
+    f = plt.figure(figsize=(8, 8))
+    plt.axes().set_aspect('equal')
+    oov_i = [i for i in range(len(labels)) if labels[i] == "OOV"]
+    not_oov_i = [i for i in range(len(labels)) if labels[i] == "Not OOV"]
+
+    plt.scatter(x[oov_i, 0], x[oov_i, 1], y[oov_i], lw=0, s=4, c='red', label="OOV")
+    plt.scatter(x[not_oov_i, 0], x[not_oov_i, 1], y[not_oov_i], lw=0, s=4, c='blue', label="Not OOV")
     plt.xlim(-25, 25)
     plt.ylim(-25, 25)
-    ax.axis('on')
-    ax.axis('tight')
+    plt.axis('on')
+    plt.axis('tight')
+    plt.legend(labels=["OOV", "Not OOV"])
 
-    for i, txt in enumerate(y):
-        ax.annotate(txt, (x[i, 0], x[i, 1]))
 
+    # for i, txt in enumerate(y):
+    #     ax.annotate(txt[0], (x[i, 0], x[i, 1]))
+    from matplotlib2tikz import save as tikz_save
+    tikz_save('test.tex', figure=f)
     save_file = os.path.join(cfg.VIS_SAVE_DIR, 'tsne_file.png')
     plt.savefig(save_file, dpi=120)
-    return f, ax, sc
+    return f
 
 
-def simple_vis_tsne(X, y):
+def simple_vis_tsne(X, y, labels):
     RS = 123424
-    x = TSNE(random_state=RS, n_iter=1000, learning_rate=20, perplexity=10, method="exact").fit_transform(X)
+    x = TSNE(random_state=RS, n_iter=1000, learning_rate=10, perplexity=23).fit_transform(X)
     print("TSNE done")
-    scatter_points(x, y)
-
+    scatter_points(x, y, labels)
 
 
 def viz_tsne(X, y):
