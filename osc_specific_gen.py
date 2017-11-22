@@ -11,7 +11,13 @@ def template(name, t_per, ch_lvl, f_lvl, g, word_emb, time):
     s += "source ~/.init_workspace_owens\n"
     s += "cd Documents/action-sequence-labeler\n"
 
-    s += "python -m main " "--train_per " + str(t_per) + " --train_word_emb " + word_emb + " --lm_gamma " + str(g) + " --char_level " + ch_lvl + " --feature_level " + f_lvl + " " + name
+    s += "python -m main " \
+         + "--train_per " + str(t_per) \
+         + " --train_word_emb " + word_emb \
+         + " --lm_gamma " + str(g) \
+         + " --char_level " + ch_lvl \
+         + " --feature_level " \
+         + f_lvl + " " + name
 
     return s
 
@@ -55,7 +61,14 @@ if __name__ == '__main__':
             ch = row['ch']
             f = row['f']
             for per in [34, 50, 67, 84]:
-                name = title + '_T_SIZE_' + str(per) + '_R_' + str(r) + "_WE_" + str(we) + "_G_" + str(g) + "_CH_" + ch + "_F_" + f
+                name = title \
+                       + '_T_SIZE_' + str(per) \
+                       + '_R_' + str(r) \
+                       + "_WE_" + str(we) \
+                       + "_G_" + str(g) \
+                       + "_CH_" + ch \
+                       + "_F_" + f
+
                 s = template(name, per, ch, f, g, we, time)
                 file_path = os.path.join(script_dir, name + ".job")
                 write_file(file_path, s)
