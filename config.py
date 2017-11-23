@@ -10,7 +10,7 @@ CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 #   John/PER Doe/PER did something yesterday. Then he did something else.
 #   Washington/LOC D.C./LOC is the capital of the U.S.
 #   ....
-ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "simple_input")
+ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "simple_input2")
 
 PUBMED_AND_PMC_W2V_BIN = os.path.join(CURRENT_DIR, "preprocessing/PubMed-and-PMC-w2v.bin")
 
@@ -20,7 +20,7 @@ PF_EMBEDDING_DIM = 5
 
 NUMBER_OF_VALIDATION_SAMPLES = 200
 
-LEARNING_RATE = 1
+LEARNING_RATE = 0.5
 
 LSTM_HIDDEN_SIZE = 200
 
@@ -91,7 +91,7 @@ TRUE_BRAT_INC = "results/brat_results/true/brat_inc_out"
 
 CLIP = None
 
-BEST_MODEL_SELECTOR = "dev_conll_f"
+BEST_MODEL_SELECTOR = ["dev_conll_f", "dev_macro_f"]
 
 RESULT_FILE = os.path.join(CURRENT_DIR, "test_results.txt")
 
@@ -121,7 +121,7 @@ NO_NE_LABEL = "O"
 # e.g. in "Manhatten/NY" the "NY" will not be treated as a label and the full token
 # "Manhatten/NY" will be loaded as one word
 LABELS = ["Action", "Reagent", "Location", "Device", "Mention", "Method", "Amount", "Concentration", "Size", "Time",
-          "Tool", "Temperature", "pH", "Speed", "Seal", "Modifier", "Generic-Measure", "Numerical", "Measure-Type"]
+          "Temperature", "pH", "Speed", "Seal", "Modifier", "Generic-Measure", "Numerical", "Measure-Type"]
 
 BIO_LABELS = [""]
 

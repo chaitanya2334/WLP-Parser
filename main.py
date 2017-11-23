@@ -133,7 +133,8 @@ def build_model(train_dataset, dev_dataset, tag_idx, embedding_matrix, model_sav
     lm_f_criterion = nn.NLLLoss()
     lm_b_criterion = nn.NLLLoss()
     att_loss = nn.CosineEmbeddingLoss(margin=1)
-    best_res_val = 0.0
+    best_res_val_0 = 0.0
+    best_res_val_1 = 0.0
     best_epoch = 0
     for epoch in range(cfg.MAX_EPOCH):
         print('-' * 40)
@@ -148,7 +149,6 @@ def build_model(train_dataset, dev_dataset, tag_idx, embedding_matrix, model_sav
                                           model=model, optimizer=optimizer, seq_criterion=seq_criterion,
                                           lm_f_criterion=lm_f_criterion, lm_b_criterion=lm_b_criterion,
                                           att_loss=att_loss, gamma=cfg.LM_GAMMA)
-        train_eval.print_results()
 
         dev_loader = DataLoader(dev_dataset, batch_size=1, num_workers=28, collate_fn=lambda x: x[0])
 
@@ -157,14 +157,23 @@ def build_model(train_dataset, dev_dataset, tag_idx, embedding_matrix, model_sav
         dev_eval.verify_results()
 
         # pick the best epoch
-        if epoch == 0 or (dev_eval.results[cfg.BEST_MODEL_SELECTOR] > best_res_val):
+        if epoch == 0 or (dev_eval.results[cfg.BEST_MODEL_SELECTOR[0]] > best_res_val_0 or
+                              dev_eval.results[cfg.BEST_MODEL_SELECTOR[1]] > best_res_val_1):
+
             best_epoch = epoch
-            best_res_val = dev_eval.results[cfg.BEST_MODEL_SELECTOR]
+            if dev_eval.results[cfg.BEST_MODEL_SELECTOR[0]] > best_res_val_0:
+                best_res_val_0 = dev_eval.results[cfg.BEST_MODEL_SELECTOR[0]]
+
+            if dev_eval.results[cfg.BEST_MODEL_SELECTOR[1]] > best_res_val_1:
+                best_res_val_1 = dev_eval.results[cfg.BEST_MODEL_SELECTOR[1]]
+
             torch.save(model, model_save_path)
 
-        print("current dev score: {0}".format(dev_eval.results[cfg.BEST_MODEL_SELECTOR]))
-        print("best dev score: {0}".format(best_res_val))
-        print("best_epoch: {1}".format(cfg.BEST_MODEL_SELECTOR, str(best_epoch)))
+        print("current dev micro_score: {0}".format(dev_eval.results[cfg.BEST_MODEL_SELECTOR[0]]))
+        print("current dev macro_score: {0}".format(dev_eval.results[cfg.BEST_MODEL_SELECTOR[1]]))
+        print("best dev micro_score: {0}".format(best_res_val_0))
+        print("best_dev_macro_score: {0}".format(best_res_val_1))
+        print("best_epoch: {0}".format(str(best_epoch)))
 
         # if the best epoch model outperforms MA
         if 0 < cfg.MAX_EPOCH_IMP <= (epoch - best_epoch):
@@ -388,4 +397,4 @@ def setup_logging():
 
 if __name__ == '__main__':
     # setup_logging()
-    main(2)
+    main(1)

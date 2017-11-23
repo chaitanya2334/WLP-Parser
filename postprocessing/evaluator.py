@@ -64,6 +64,20 @@ class Evaluator(object):
                 print("Unexpected label id in predictions.")
         self.conll_format.append("")
 
+    def macro_fscore(self, metrics_by_type):
+        p_total = 0
+        r_total = 0
+
+        for key, metric in metrics_by_type.items():
+            p_total += metric.prec
+            r_total += metric.rec
+
+        p_avg = p_total / len(metrics_by_type)
+        r_avg = r_total / len(metrics_by_type)
+
+        f_avg = (2 * p_avg * r_avg) / (p_avg + r_avg)
+        return conlleval.Metrics(0, 0, 0, p_avg, r_avg, f_avg)
+
     def gen_summary_results(self):
         p = (float(self.main_correct_count) / float(self.main_predicted_count)) if (
             self.main_predicted_count > 0) else 0.0
@@ -89,13 +103,18 @@ class Evaluator(object):
         if self.label2id is not None and self.conll_eval is True:
             conll_counts = conlleval.evaluate(self.conll_format)
             self.conll_metrics_overall, self.conll_metrics_by_type = conlleval.metrics(conll_counts)
+            self.macro_metrics = self.macro_fscore(self.conll_metrics_by_type)
             results[self.name + "_conll_accuracy"] = float(conll_counts.correct_tags) / float(
                 conll_counts.token_counter)
             results[self.name + "_conll_p"] = self.conll_metrics_overall.prec
             results[self.name + "_conll_r"] = self.conll_metrics_overall.rec
             results[self.name + "_conll_f"] = self.conll_metrics_overall.fscore
-            results['label_table'] = [[label, metric.prec, metric.rec, metric.fscore, conll_counts.t_found_correct[label]]
-                                      for label, metric in self.conll_metrics_by_type.items()]
+            results[self.name + "_macro_p"] = self.macro_metrics.prec
+            results[self.name + "_macro_r"] = self.macro_metrics.rec
+            results[self.name + "_macro_f"] = self.macro_metrics.fscore
+            results['label_table'] = [
+                [label, metric.prec, metric.rec, metric.fscore, conll_counts.t_found_correct[label]]
+                for label, metric in sorted(self.conll_metrics_by_type.items())]
 
         self.results = results
         return self.results
