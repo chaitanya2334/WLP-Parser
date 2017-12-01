@@ -12,6 +12,7 @@ import features_config as feat_cfg
 
 import io
 import logging
+from builtins import any as b_any
 
 from preprocessing.feature_engineering.pos import PosTagger
 
@@ -25,7 +26,7 @@ Link = namedtuple("Link", "l_id, l_name, arg1, arg2")
 # list of sentences, where each sentence is a list of words : [[word1, word2, word3,...], [word1, word2...]]
 
 class ProtoFile:
-    def __init__(self, filename, gen_features=False):
+    def __init__(self, filename, gen_features=False, to_filter=False):
         self.filename = filename
         self.basename = os.path.basename(filename)
         self.protocol_name = self.basename
@@ -56,6 +57,28 @@ class ProtoFile:
             if gen_features:
                 self.pos_tags = self.__gen_pos_stanford()
                 self.conll_deps = self.__gen_dep()
+
+            if to_filter:
+                self.filter()
+
+    def filter(self):
+        # tokens2d, pos_tags, and conll_deps are filtered if a sentence was not tagged
+        new_tokens2d = []
+        new_pos_tags = []
+        new_conll_deps = []
+        for tokens1d, pos_tag1d, deps1d in zip(self.tokens2d, self.pos_tags, self.conll_deps):
+            # here tokens1d is a sentence of word sequences, and label is a sequence of labels for a sentence.
+
+            # check if any of the labels in this sentence have POSITIVE_LABEL in them, if they do, then consider that
+            # sentence, else discard that sentence.
+            if b_any(cfg.POSITIVE_LABEL in token.label for token in tokens1d):
+                new_tokens2d.append(tokens1d)
+                new_pos_tags.append(pos_tag1d)
+                new_conll_deps.append(deps1d)
+
+        self.tokens2d = new_tokens2d
+        self.pos_tags = new_pos_tags
+        self.conll_deps = new_conll_deps
 
     def get_deps(self):
         return [nltk.DependencyGraph(conll_dep, top_relation_label='root') for conll_dep in self.conll_deps]
@@ -93,7 +116,6 @@ class ProtoFile:
             # dependency parser cannot deal with an empty text in pos tagger, so the below hack.
             pos_tags = [[pos_tag if pos_tag[0] else ('_', pos_tag[1]) for pos_tag in p1d] for p1d in pos_tags]
             pickle.dump(pos_tags, open(p_cache, 'wb'))
-
 
         return pos_tags
 
