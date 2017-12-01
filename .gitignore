@@ -108,3 +108,23 @@ test_tokenizer.txt
 simple_input/
 200_protocols/
 results/
+console.out
+csv_results/
+data/
+out.txt
+plot_data.p
+preprocessing/dataset/
+preprocessing/embedding_matrix.p
+Would skip repository preprocessing/feature_engineering/geniatagger/
+preprocessing/feature_engineering/stanford-parser-full-2016-10-31/
+preprocessing/feature_engineering/stanford-postagger-full-2014-08-27/
+preprocessing/feature_engineering/stanford-postagger-full-2017-06-09/
+preprocessing/feature_engineering/test_posTagger.py
+preprocessing/features_pickle.p
+preprocessing/pubmed_vocab.txt
+preprocessing/run1.txt
+preprocessing/unigrams.txt
+simple_input2/
+temp.txt
+visualization/data/
+visualization/pos_results/
