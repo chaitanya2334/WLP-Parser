@@ -10,7 +10,7 @@ CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 #   John/PER Doe/PER did something yesterday. Then he did something else.
 #   Washington/LOC D.C./LOC is the capital of the U.S.
 #   ....
-ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "simple_input2")
+ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "simple_input")
 
 PUBMED_AND_PMC_W2V_BIN = os.path.join(CURRENT_DIR, "preprocessing/PubMed-and-PMC-w2v.bin")
 
@@ -26,16 +26,16 @@ LSTM_HIDDEN_SIZE = 200
 
 LSTM_OUT_SIZE = 200
 
-MAX_EPOCH = 100
+MAX_EPOCH = 500
 
 VERBOSE = False
 
-BATCH_SIZE = 1
+BATCH_SIZE = 8
 
 POSITIVE_LABEL = 'Action'
 NEG_LABEL = 'O'
 
-CATEGORIES = 3
+CATEGORIES = None
 
 OOV_FILEPATH = os.path.join(CURRENT_DIR, "preprocessing/oov.txt")
 
@@ -43,21 +43,23 @@ MODEL_SAVE_DIR = os.path.join(CURRENT_DIR, "results/models")
 
 FILTER_ALL_NEG = False
 
-MAX_EPOCH_IMP = 7
+MAX_EPOCH_IMP = 20
+
+MIN_EPOCH_IMP = 5
 
 PER = (60, 20, 20)
 
 TRAIN_PER = 100  # how much of the train dataset should be used in training.
 
-LM_HIDDEN_SIZE = 50
+LM_HIDDEN_SIZE = 200
 
 LM_MAX_VOCAB_SIZE = 7500
 
+WORD_VOCAB = 0
+
 LM_GAMMA = 0.1
 
-REPLACE_DIGITS = True
-
-NUM_TO_D = True
+REPLACE_DIGITS = False
 
 PUBMED_VOCAB_FILE = os.path.join(CURRENT_DIR, "preprocessing/pubmed_vocab.txt")
 
@@ -99,13 +101,11 @@ TEXT_RESULT_DIR = os.path.join(CURRENT_DIR, "results/text_results")
 
 CSV_RESULT_DIR = os.path.join(CURRENT_DIR, "results/csv_results")
 
-DB_WITHOUT_FEATURES = os.path.join(CURRENT_DIR, "dataset_without_features.p")
-DB_WITH_FEATURES = os.path.join(CURRENT_DIR, "results/pickles/dataset_with_features.p")
-DB_NO_NEG_WITH_FEATURES = os.path.join(CURRENT_DIR, "dataset_no_negative_sents_with_features.p")
+
 DEP_PICKLE_DIR = os.path.join(CURRENT_DIR, "results/pickles/dep_graphs")
 POS_PICKLE_DIR = os.path.join(CURRENT_DIR, "results/pickles/pos_tags")
-DB_WITH_POS = os.path.join(CURRENT_DIR, "dataset_with_pos.p")
-DB_WITH_POS_DEP = os.path.join(CURRENT_DIR, "dataset_with_pos_dep.p")
+
+DB = os.path.join(CURRENT_DIR, "results/pickles/datasets.p")
 
 # Number of windows to use during training (offset is COUNT_WINDOWS_TEST, i.e. test windows will
 # be loaded first)
@@ -140,6 +140,10 @@ DB_200_WITH_FEATURES = os.path.join(CURRENT_DIR, "200_dataset_with_features.p")
 TRAIN_WORD_EMB = False
 
 VIS_SAVE_DIR = os.path.join(CURRENT_DIR, "visualization/results")
+
+PLOT_SAVE_DIR = os.path.join(CURRENT_DIR, "results/plots")
+
+BATCH_TYPE = "multi"
 
 def ver_print(string, value):
     if VERBOSE:
