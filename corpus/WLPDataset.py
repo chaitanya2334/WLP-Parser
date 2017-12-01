@@ -66,13 +66,14 @@ class CustomDataset(data.Dataset):
         labels = [token.label for token in self.tokens2d[item]]
         x = self.__gen_sent_idx_seq(sent)
         c = self.__prep_char_idx_seq(sent)
-        y = [self.tag_idx[label] for label in labels]
+        y = [self.tag_idx['<s>']] + [self.tag_idx[label] for label in labels] + [self.tag_idx['</s>']]
 
         f = self.f_df[self.cut_list[item]:self.cut_list[item + 1]]
         f_pos = f['0:pos'].as_matrix()
         # add pos tag for start and end tag
         f_pos = np.insert(f_pos, 0, self.pos_index['NULL'])
         f_pos = np.insert(f_pos, f_pos.size, self.pos_index['NULL'])
+        f_pos = list(f_pos.tolist())
 
         f_rel = f['0:rel'].as_matrix()
 
@@ -86,7 +87,8 @@ class CustomDataset(data.Dataset):
         f_dep.insert(len(f_dep), self.word_index['</s>'])
         # f = self.enc.transform(f.as_matrix()).todense()
         p = self.pnos[item]
-        assert len(x) == len(f) + 2, (len(x), len(f))
+        assert len(x) == len(f) + 2, (len(x), len(f), p)
+        assert len(x) == len(f_pos)
         return Data(x, c, y, p, f_pos, f_rel, f_dep)
 
     def __len__(self):
@@ -101,9 +103,12 @@ class CustomDataset(data.Dataset):
         return sent_idx_seq
 
     @staticmethod
-    def __to_idx_seq(list1d, start, end, index):
+    def __to_idx_seq(list1d, start, end, index, lowercase=False):
         row_idx_seq = [index[start]]
         for item in list1d:
+            if lowercase:
+                item = item.lower()
+
             if item in index:
                 row_idx_seq.append(index[item])
             else:
@@ -116,7 +121,7 @@ class CustomDataset(data.Dataset):
         cfg.ver_print("char_index", self.char_index)
         char_idx_seq = [self.__to_idx_seq([cfg.SENT_START], start=cfg.WORD_START, end=cfg.WORD_END,
                                           index=self.char_index)] + \
-                       [self.__to_idx_seq(list(word), start=cfg.WORD_START, end=cfg.WORD_END, index=self.char_index)
+                       [self.__to_idx_seq(list(word), lowercase=True, start=cfg.WORD_START, end=cfg.WORD_END, index=self.char_index)
                         for word in sent] + \
                        [self.__to_idx_seq([cfg.SENT_END], start=cfg.WORD_START, end=cfg.WORD_END,
                                           index=self.char_index)]
@@ -159,13 +164,15 @@ class WLPDataset(object):
         self.protocols = self.read_protocols(gen_features=True, dir_path=cfg.ARTICLES_FOLDERPATH)
 
         self.tag_idx = self.make_bio_dict(cfg.LABELS)
-        self.tokens2d, self.pnos = self.__gen_data(replace_digit=True, to_filter=cfg.FILTER_ALL_NEG)
+        self.tokens2d, self.pnos = self.__gen_data(replace_digit=cfg.REPLACE_DIGITS)
         # self.verify_tokens(self.tokens2d)
         self.total = len(self.tokens2d)
         self.train = None
         self.dev = None
         self.test = None
+        self.is_oov = dict()
         self.embedding_matrix = self.prepare_embeddings()
+
         if gen_feat:
             print("Collecting all the Features...")
             self.feat_list = features.create_features(self.protocols)
@@ -195,11 +202,12 @@ class WLPDataset(object):
         wcounts.sort(key=lambda x: x[1], reverse=True)
         sorted_voc = [wc[0] for wc in wcounts]
         # note that index 0 is reserved, never assigned to an existing word
-        word_index = dict(list(zip(sorted_voc, list(range(1, len(sorted_voc) + 1)))))
+        word_index = dict(list(zip(sorted_voc, list(range(3, len(sorted_voc) + 1 + 2)))))
 
         if support_start_stop:
-            word_index['<s>'] = len(word_index) + 1
-            word_index['</s>'] = len(word_index) + 1
+            word_index['<s>'] = 1
+            word_index['</s>'] = 2
+
 
         return word_index
 
@@ -224,7 +232,7 @@ class WLPDataset(object):
 
         self.word_index = self.gen_word_index(sents, support_start_stop)
 
-        self.char_index = gen_list2id_dict(list_of_chars, insert_words=['<w>', '</w>', '<s>', '</s>'])
+        self.char_index = gen_list2id_dict(list_of_chars, lowercase=True, insert_words=['<w>', '</w>', '<s>', '</s>'])
 
         print(self.char_index)
 
@@ -243,9 +251,11 @@ class WLPDataset(object):
             try:
                 embedding_vector = skip_gram_model[word]
                 embedding_matrix[i] = embedding_vector
+                self.is_oov[i] = 0
             except KeyError:
                 # not found in vocab
                 # words not found in embedding index will be all-zeros.
+                self.is_oov[i] = 1
                 with open(cfg.OOV_FILEPATH, 'a') as f:
                     f.write('{0}\n'.format(word))
                 cfg.ver_print('out of vocabulary word', word)
@@ -393,8 +403,9 @@ class WLPDataset(object):
 
         if dir_path and filenames is None:
             filenames = self.__from_dir(dir_path, extension="ann")
-
-        articles = [ProtoFile(filename, gen_features) for filename in tqdm(filenames)]
+        if cfg.FILTER_ALL_NEG:
+            print("FILTERING BAD SENTENCES")
+        articles = [ProtoFile(filename, gen_features, to_filter=cfg.FILTER_ALL_NEG) for filename in tqdm(filenames)]
 
         # remove articles that are empty
         articles = [article for article in articles if article.status]
@@ -410,18 +421,15 @@ class WLPDataset(object):
 
         return len(tokens2d)
 
-    def __gen_data(self, replace_digit, to_filter):
+    def __gen_data(self, replace_digit):
 
         # get list of list of words
         tokens2d, pno = self.__load_sents_and_labels(self.protocols, with_bio=True)
 
         logger.debug("labels {0}".format(tokens2d))
 
-        # filter, such that only sentences that have atleast one action-verb will be taken into consideration
-        if to_filter:
-            tokens2d, pno = self.__filter(tokens2d, pno)
-
         if replace_digit:
+            print("REPLACING DIGITS")
             tokens2d = self.replace_num(tokens2d)
 
         # convert list of list of words to list of list of word_indices
@@ -451,10 +459,10 @@ class WLPDataset(object):
         assert id2word[self.word_index['<s>']] == '<s>'
         return [id2word[idx] for idx in idx_seq]
 
-    def split_data(self, start, stop, replace_num=True, to_filter=True):
-        assert stop > start
-        print(int(stop - start))
-        return itertools.islice(self.__gen_data(replace_num, to_filter, start), int(stop - start))
+    # def split_data(self, start, stop, replace_num=True, to_filter=True):
+    #    assert stop > start
+    #    print(int(stop - start))
+    #    return itertools.islice(self.__gen_data(replace_num, to_filter, start), int(stop - start))
 
     @staticmethod
     def __split_dataset(per, size):
