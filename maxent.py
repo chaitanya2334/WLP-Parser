@@ -58,7 +58,9 @@ def extract_data(start, end, dataset, feat):
 
 
 def main():
-    dataset = dataset_prep(savefile=cfg.DB_WITH_FEATURES)
+    dataset = dataset_prep(savefile=cfg.DB_MAXENT)
+    dataset.tag_idx['<s>'] = len(dataset.tag_idx.keys())
+    dataset.tag_idx['</s>'] = len(dataset.tag_idx.keys())
     total = len(dataset.tokens2d)
     print(total)
     print(len(dataset.cut_list))
@@ -67,12 +69,12 @@ def main():
     ntest = total
 
     ablation = [
-        ['pos'],
-        ['pos', '0:ng0'],
-        ['pos', '0:ng0', '0:bg'],
-        ['pos', '0:ng0', '0:bg', 'rel'],
-        ['pos', '0:ng0', '0:bg', 'rel', 'dep', 'gov'],
-        ['pos', '0:ng0', '0:bg', 'rel', 'dep', 'gov', 'lm'],
+        # ['pos'],
+        ['pos', 'ng0'],
+        ['pos', 'ng0', 'bg'],
+        ['pos', 'ng0', 'bg', 'rel'],
+        ['pos', 'ng0', 'bg', 'rel', 'dep', 'gov'],
+        ['pos', 'ng0', 'bg', 'rel', 'dep', 'gov', 'lm'],
     ]
 
     for feat in ablation:
@@ -80,7 +82,7 @@ def main():
 
         # print(list(dataset.f_df.columns.values))
 
-        x_test, w_test, y_test = extract_data(ntrain, ntest, dataset, feat)
+        x_test, w_test, y_test = extract_data(ndev, ntest, dataset, feat)
 
         model = LogisticRegression(solver='lbfgs', multi_class='multinomial', n_jobs=8)
 
