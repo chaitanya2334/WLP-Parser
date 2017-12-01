@@ -744,10 +744,20 @@ class UnigramFeature(object):
 
         for i in range(len(window.tokens)):
             token = window.tokens[i]
-            result.append(["ng0=%s" % token.word])
+            result.append(["ng0=%s" % (self.token_to_rank(token))])
 
         # print("done")
         return result
+
+    def token_to_rank(self, token):
+        """Converts a token/word to its unigram rank.
+        Args:
+            token: The token/word to convert.
+        Returns:
+            Unigram rank as integer,
+            or -1 if it wasn't found among the unigrams.
+        """
+        return self.unigrams.get_rank_of(token.word, -1)
 
 
 class BigramFeature(object):

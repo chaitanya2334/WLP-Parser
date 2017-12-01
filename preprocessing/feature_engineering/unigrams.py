@@ -32,7 +32,7 @@ class Unigrams(object):
             else:
                 self.fill_from_file(filepath, skip_first_n=skip_first_n, max_count_words=max_count_words)
         else:
-            self.fill_from_articles(self.articles, verbose=True)
+            self.fill_from_articles(self.articles, verbose=True, skip_first_n=skip_first_n, max_count_words=max_count_words)
 
     def generate_unigrams(self, filepath):
 
@@ -83,7 +83,7 @@ class Unigrams(object):
                     print("[Warning] Expected 2 columns in unigrams file at line %d, " \
                           "got %d" % (line_idx, len(columns)))
 
-    def fill_from_articles(self, articles, verbose=False):
+    def fill_from_articles(self, articles, verbose=False, skip_first_n=0, max_count_words=20000):
         """Fills the dictionaries of this class from a corpus file.
 
         The corpus file is expected to contain one article/document per line.
@@ -97,9 +97,9 @@ class Unigrams(object):
             articles: Filepath to the corpus file.
             verbose: Whether to output messages during parsing.
         """
-        self.fill_from_articles_labels(articles, labels=None, verbose=verbose)
+        self.fill_from_articles_labels(articles, labels=None, verbose=verbose, skip_first_n=skip_first_n, max_count_words=max_count_words)
 
-    def fill_from_articles_labels(self, articles, labels=None, verbose=False):
+    def fill_from_articles_labels(self, articles, labels=None, verbose=False, skip_first_n=0, max_count_words=20000):
         """Fills the dictionaries of this class from a corpus file, optionally only with words of
         specific labels (e.g. only words labeled with "PER").
 
@@ -131,9 +131,15 @@ class Unigrams(object):
 
         most_common = counts.most_common()
         for i, (word, count) in enumerate(most_common):
-            self.word_to_count[word] = count
-            self.word_to_rank[word] = i + 1
-            self.sum_of_counts += count
+            if i < skip_first_n:
+                continue
+            else:
+                if max_count_words is not None and i >= max_count_words:
+                    break
+                else:
+                    self.word_to_count[word] = count
+                    self.word_to_rank[word] = i + 1
+                    self.sum_of_counts += count
 
     def write_to_file(self, filepath):
         """Writes the contents of this unigrams object to a file.
