@@ -82,6 +82,7 @@ SENT_START = "<s>"
 SENT_END = "</s>"
 
 UNK = "<unk>"
+MIN_WORD_COUNT = 3  # minimum word count for it to be part of vocabulary
 
 RANDOM_TRAIN = True
 

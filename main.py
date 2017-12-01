@@ -46,6 +46,11 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
     t = tqdm(data, total=len(data))
 
+    if is_oov[0] == 1:
+        print("Yes, UNKNOWN token is out of vocab")
+    else:
+        print("No, UNKNOWN token is not out of vocab")
+
     for X, C, POS, REL, DEP, Y in t:
 
         # zero the parameter gradients
@@ -60,6 +65,7 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
         if cfg.CHAR_LEVEL == "Attention":
             lm_f_out, lm_b_out, seq_out, seq_lengths, emb, char_emb = model(x_var, c_var, pos_var, rel_var, dep_var)
             unrolled_x_var = list(chain.from_iterable(x_var))
+
             not_oov_seq = [-1 if is_oov[idx] else 1 for idx in unrolled_x_var]
             char_att_loss = att_loss(emb.squeeze(), char_emb.squeeze(), Variable(torch.cuda.LongTensor(not_oov_seq)))
 
@@ -292,7 +298,7 @@ def dataset_prep(loadfile=None, savefile=None):
         corpus.gen_data(cfg.PER)
     else:
         print("Loading Data ...")
-        corpus = WLPDataset(gen_feat=True)
+        corpus = WLPDataset(gen_feat=True, min_wcount=cfg.MIN_WORD_COUNT)
         corpus.gen_data(cfg.PER)
 
         if savefile:
@@ -444,7 +450,7 @@ def main(nrun=1):
     cfg.DEP_WORD_FEATURE = args.dep_word
     cfg.LM_GAMMA = args.lm_gamma
     for run in range(nrun):
-        dataset = dataset_prep(loadfile=cfg.DB)
+        dataset = dataset_prep(savefile=cfg.DB)
         cfg.CATEGORIES = len(dataset.tag_idx.keys()) + 2  # +2 for start and end tags of a seq
         dataset.tag_idx['<s>'] = len(dataset.tag_idx.keys())
         dataset.tag_idx['</s>'] = len(dataset.tag_idx.keys())

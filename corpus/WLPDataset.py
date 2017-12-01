@@ -109,10 +109,12 @@ class CustomDataset(data.Dataset):
             if lowercase:
                 item = item.lower()
 
-            if item in index:
+            try:
                 row_idx_seq.append(index[item])
-            else:
-                print("bad characters: {0}".format(item))
+            except KeyError:
+                # print("bad characters/Word: {0}".format(item))
+                row_idx_seq.append(index[cfg.UNK])
+
         row_idx_seq.append(index[end])
 
         return row_idx_seq
@@ -121,7 +123,8 @@ class CustomDataset(data.Dataset):
         cfg.ver_print("char_index", self.char_index)
         char_idx_seq = [self.__to_idx_seq([cfg.SENT_START], start=cfg.WORD_START, end=cfg.WORD_END,
                                           index=self.char_index)] + \
-                       [self.__to_idx_seq(list(word), lowercase=True, start=cfg.WORD_START, end=cfg.WORD_END, index=self.char_index)
+                       [self.__to_idx_seq(list(word), lowercase=True, start=cfg.WORD_START, end=cfg.WORD_END,
+                                          index=self.char_index)
                         for word in sent] + \
                        [self.__to_idx_seq([cfg.SENT_END], start=cfg.WORD_START, end=cfg.WORD_END,
                                           index=self.char_index)]
@@ -155,11 +158,12 @@ class CustomDataset(data.Dataset):
 
 
 class WLPDataset(object):
-    def __init__(self, gen_feat=False, shuffle_once=True):
+    def __init__(self, gen_feat=False, min_wcount=1, shuffle_once=True):
 
         self.word_index = dict()
         self.word_counts = OrderedDict()
         self.char_index = dict()
+        self.min_wcount = min_wcount
 
         self.protocols = self.read_protocols(gen_features=True, dir_path=cfg.ARTICLES_FOLDERPATH)
 
@@ -198,17 +202,27 @@ class WLPDataset(object):
                 else:
                     self.word_counts[w] = 1
 
+        # remove all words in this dictionary, that have counts less than self.min_wcount
+        if self.min_wcount:
+            self.word_counts = {k: v for k, v in self.word_counts.items() if v >= self.min_wcount}
+
         wcounts = list(self.word_counts.items())
         wcounts.sort(key=lambda x: x[1], reverse=True)
         sorted_voc = [wc[0] for wc in wcounts]
         # note that index 0 is reserved, never assigned to an existing word
+
         word_index = dict(list(zip(sorted_voc, list(range(3, len(sorted_voc) + 1 + 2)))))
+
+        # index 0 is reserved for unknown words
+        word_index[cfg.UNK] = 0
+        # later, when word_index is used, evertime there is a KeyError, the index of cfg.UNK will be used
 
         if support_start_stop:
             word_index['<s>'] = 1
             word_index['</s>'] = 2
 
-
+        # in essence word_index is a list of words in the vocabulary, along with its id. Words seen in text
+        # that are not in word_index will be given cfg.UNK's id.
         return word_index
 
     def prepare_embeddings(self, load_bin=True, support_start_stop=True):
@@ -239,9 +253,11 @@ class WLPDataset(object):
         cfg.CHAR_VOCAB = len(self.char_index.items())
 
         with open('test_tokenizer.txt', 'w', encoding='utf-8') as out:
-            out.writelines([item + ' ' + str(self.word_index[item]) + '\n' for item in sent_iter_flat])
+            out.writelines([item + ' ' + str(self.word_index[item]) + '\n'
+                            if item in self.word_index
+                            else item + ' ' + str(self.word_index[cfg.UNK]) + '\n'
+                            for item in sent_iter_flat])
 
-        embedding_matrix = np.zeros((len(self.word_index) + 1, cfg.EMBEDDING_DIM))
         embedding_matrix = np.random.uniform(low=-0.01, high=0.01, size=(len(self.word_index) + 1, cfg.EMBEDDING_DIM))
         print("         Populating Embedding Matrix ...")
         with open(cfg.OOV_FILEPATH, 'w') as f:
@@ -253,8 +269,8 @@ class WLPDataset(object):
                 embedding_matrix[i] = embedding_vector
                 self.is_oov[i] = 0
             except KeyError:
-                # not found in vocab
-                # words not found in embedding index will be all-zeros.
+                # not found in pre-trained word embedding list.
+                # cfg.UNK will also have is_oov = 1
                 self.is_oov[i] = 1
                 with open(cfg.OOV_FILEPATH, 'a') as f:
                     f.write('{0}\n'.format(word))
