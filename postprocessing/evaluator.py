@@ -31,6 +31,7 @@ class Evaluator(object):
         self.start_time = time.time()
         self.total_samples = 0
         self.results = None
+        self.skip_tags = [label2id['<s>'], label2id['</s>']]
 
         if self.label2id is not None:
             self.id2label = collections.OrderedDict()
@@ -55,13 +56,14 @@ class Evaluator(object):
                                         for pred_label, true_label in zip(predicted_labels, label_ids)])
 
         for i in range(len(word_ids)):
+            if not label_ids[i] in self.skip_tags:
+                try:
+                    self.conll_format.append(
+                        str(word_ids[i]) + "\t" + str(self.id2label[label_ids[i]]) + "\t" + str(
+                            self.id2label[predicted_labels[i]]))
+                except KeyError:
+                    print("Unexpected label id in predictions.")
 
-            try:
-                self.conll_format.append(
-                    str(word_ids[i]) + "\t" + str(self.id2label[label_ids[i]]) + "\t" + str(
-                        self.id2label[predicted_labels[i]]))
-            except KeyError:
-                print("Unexpected label id in predictions.")
         self.conll_format.append("")
 
     def macro_fscore(self, metrics_by_type):
@@ -74,8 +76,11 @@ class Evaluator(object):
 
         p_avg = p_total / len(metrics_by_type)
         r_avg = r_total / len(metrics_by_type)
+        if p_avg + r_avg == 0:
+            f_avg = 0
+        else:
+            f_avg = (2 * p_avg * r_avg) / (p_avg + r_avg)
 
-        f_avg = (2 * p_avg * r_avg) / (p_avg + r_avg)
         return conlleval.Metrics(0, 0, 0, p_avg, r_avg, f_avg)
 
     def gen_summary_results(self):
@@ -126,7 +131,8 @@ class Evaluator(object):
     def print_results(self):
         for key in self.results:
             if key == 'label_table':
-                print(tabulate(self.results[key], headers=['Label', 'Precision', 'Recall', 'Fscore', 'Support'],
+                print(tabulate([('Label', 'Precision', 'Recall', 'Fscore', 'Support')]+self.results[key],
+                               headers="firstrow",
                                tablefmt='psql'))
             else:
                 print(key + ": " + str(self.results[key]))
