@@ -115,7 +115,7 @@ out.txt
 plot_data.p
 preprocessing/dataset/
 preprocessing/embedding_matrix.p
-Would skip repository preprocessing/feature_engineering/geniatagger/
+preprocessing/feature_engineering/geniatagger/
 preprocessing/feature_engineering/stanford-parser-full-2016-10-31/
 preprocessing/feature_engineering/stanford-postagger-full-2014-08-27/
 preprocessing/feature_engineering/stanford-postagger-full-2017-06-09/
