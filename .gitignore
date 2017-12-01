@@ -126,5 +126,6 @@ preprocessing/run1.txt
 preprocessing/unigrams.txt
 simple_input2/
 temp.txt
-visualization/data/
+simple_input3/
 visualization/pos_results/
+run_all.sh
