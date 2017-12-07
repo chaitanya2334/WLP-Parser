@@ -9,6 +9,7 @@ from torch.nn.utils import rnn
 import config as cfg
 from model.AttNet import AttNet
 from model.CharNet import CharNet
+from model.Highway import HighwayNet
 from model.LMnet import LMnet
 from model.multi_batch.MultiBatchCharNet import MultiBatchCharNet
 from model.utils import to_scalar, TimeDistributed
@@ -51,6 +52,8 @@ class MultiBatchSeqNet(nn.Module):
 
         self.char_net = MultiBatchCharNet(cfg.CHAR_EMB_DIM, cfg.CHAR_RECURRENT_SIZE, out_size=cfg.EMBEDDING_DIM)
 
+        self.highway = HighwayNet(cfg.EMBEDDING_DIM, cfg.EMBEDDING_DIM)
+
         if pos_feat == "Yes":
             self.pos_emb = nn.Embedding(cfg.POS_VOCAB, cfg.POS_EMB_DIM)
             # initialize weights
@@ -66,7 +69,7 @@ class MultiBatchSeqNet(nn.Module):
 
         inp_size = self.emb_dim
 
-        if self.char_level == "Input":
+        if self.char_level == "Input" or self.char_level == "Highway":
             inp_size += self.char_emb_dim
 
         if self.pos_feat == "Yes":
@@ -194,7 +197,9 @@ class MultiBatchSeqNet(nn.Module):
         if self.char_level == "Input":
             char_emb = self.char_net(char_idx_seq)
             inp = cat([emb, char_emb], dim=2)
-
+        elif self.char_level == "Highway":
+            char_emb = self.char_net(char_idx_seq)
+            inp = self.highway(emb, char_emb)
         elif self.char_level == "Attention":
             char_emb = self.char_net(char_idx_seq)
             inp = self.att_net(emb, char_emb)
