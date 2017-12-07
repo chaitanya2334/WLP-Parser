@@ -16,7 +16,7 @@ class MultiBatchCharNet(nn.Module):
         self.batch_size = 1
         self.out_size = out_size
         self.hidden_size = recurr_size
-        self.emb = nn.Embedding(cfg.CHAR_VOCAB, embedding_dim=emb_size, scale_grad_by_freq=True)
+        self.emb = nn.Embedding(cfg.CHAR_VOCAB, embedding_dim=emb_size)
         self.rnn = nn.LSTM(input_size=emb_size, hidden_size=self.hidden_size, batch_first=True, bidirectional=True)
         self.linear = nn.Linear(in_features=self.hidden_size * self.num_dir, out_features=out_size)
         self.tanh = nn.Tanh()
@@ -30,7 +30,7 @@ class MultiBatchCharNet(nn.Module):
         self.hidden_state = (h0_encoder_bi.cuda(), c0_encoder_bi.cuda())
 
     def init_weights(self):
-        initrange = 0.1
+        initrange = 0.01
         self.emb.weight.data.uniform_(-initrange, initrange)
 
     def pad(self, minibatch, pad_token, pad_first=False, fix_length=None, include_lengths=True):
@@ -72,7 +72,8 @@ class MultiBatchCharNet(nn.Module):
         out_stack = []
         # print(seq_lens)
         for seq_len in seq_lens:
-            out = torch.index_select(tensor1d, dim=0, index=Variable(torch.arange(start, start+seq_len).long()).cuda())
+            out = torch.index_select(tensor1d, dim=0,
+                                     index=Variable(torch.arange(start, start + seq_len).long()).cuda())
             # print(out.size())
             if max_seq_len - seq_len > 0:
                 out_stack.append(
@@ -85,6 +86,13 @@ class MultiBatchCharNet(nn.Module):
         out = torch.stack(out_stack, dim=0)
         return out
 
+    @staticmethod
+    def len_sort(seq):
+        # sorts the list by length, also returns arg-index so that you can revert back
+        idx, sent = zip(*sorted(enumerate(seq), key=lambda x: len(x[1]), reverse=True))
+        ridx = sorted(range(len(seq)), key=idx.__getitem__)
+        return sent, ridx
+
     def forward(self, minibatch):
         out_stack = []
         minibatch = list(minibatch)
@@ -93,13 +101,12 @@ class MultiBatchCharNet(nn.Module):
 
         self.init_state(len(batch_of_words))
         # a hack to get index of the sorted words, so i can unsort them back after they are processed
-        idx_sort = [i[0] for i in sorted(enumerate(batch_of_words), key=lambda x: len(x), reverse=True)]
-        sent = sorted(batch_of_words, key=lambda x: len(x), reverse=True)
-
+        # print(batch_of_words)
+        sent, ridx = self.len_sort(batch_of_words)
         padded, seq_lengths = self.pad(sent, 0)
         # print(padded)
         out = self.emb(Variable(cuda.LongTensor(padded)))
-        # out is of size (num_words x max_len x char_emb_size)
+        # out is of size (all_words x max_len x char_emb_size)
         # print("out size: {0}".format(out.size()))
         out = rnn.pack_padded_sequence(out, seq_lengths, batch_first=True)
         out, hidden_state = self.rnn(out, self.hidden_state)
@@ -108,9 +115,10 @@ class MultiBatchCharNet(nn.Module):
 
         # TODO verify
         # unsorting IMPORTANT. cos we initially sorted the seq of chars to pass it to rnn.
-        hidden_state = torch.index_select(hidden_state[0], dim=1, index=Variable(cuda.LongTensor(idx_sort)))
+        hidden_state = torch.index_select(hidden_state[0], dim=1, index=Variable(cuda.LongTensor(ridx)))
 
         # TODO verify that this is indeed the last outputs of both forward rnn and backward rnn
+
         out = cat([hidden_state[0], hidden_state[1]], dim=1)
         # print("cat out size: {0}".format(out.size()))
         cfg.ver_print("Hidden state concat", out)
