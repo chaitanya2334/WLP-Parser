@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from corpus.BratWriter import BratFile
+from corpus.BratWriter import BratFile, Writer
 from corpus.WLPDataset import WLPDataset
 import config as cfg
 from model.SeqNet import SeqNet
@@ -41,7 +41,8 @@ def argmax(var):
     return preds
 
 
-def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, lm_f_criterion, lm_b_criterion, att_loss,
+def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, lm_f_criterion, lm_b_criterion,
+                  att_loss,
                   gamma):
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
     t = tqdm(data, total=len(data))
@@ -51,7 +52,7 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
     else:
         print("No, UNKNOWN token is not out of vocab")
 
-    for X, C, POS, REL, DEP, Y in t:
+    for SENT, X, C, POS, REL, DEP, Y, P in t:
 
         # zero the parameter gradients
         optimizer.zero_grad()
@@ -67,7 +68,7 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
             unrolled_x_var = list(chain.from_iterable(x_var))
 
             not_oov_seq = [-1 if is_oov[idx] else 1 for idx in unrolled_x_var]
-            char_att_loss = att_loss(emb.squeeze(), char_emb.squeeze(), Variable(torch.cuda.LongTensor(not_oov_seq)))
+            char_att_loss = att_loss(emb.detach(), char_emb, Variable(torch.cuda.LongTensor(not_oov_seq)))
 
         else:
             lm_f_out, lm_b_out, seq_out, seq_lengths = model(x_var, c_var, pos_var, rel_var, dep_var)
@@ -107,8 +108,8 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
                                                                 to_scalar(seq_loss))
         if gamma != 0:
             desc += " + gamma: {0} * (lm_f_loss: {1:.4f} + lm_b_loss: {2:.4f})".format(gamma,
-                                                                                      to_scalar(lm_f_loss),
-                                                                                      to_scalar(lm_b_loss))
+                                                                                       to_scalar(lm_f_loss),
+                                                                                       to_scalar(lm_b_loss))
 
         if cfg.CHAR_LEVEL == "Attention":
             desc += " + char_att_loss: {0:.4f}".format(to_scalar(char_att_loss))
@@ -165,7 +166,7 @@ def build_model(train_dataset, dev_dataset, test_dataset,
     # verify model
     print(model)
 
-    # init gradient descent optimizer
+    # remove paramters that have required_grad = False
 
     optimizer = optim.Adadelta(model.parameters(), lr=cfg.LEARNING_RATE)
     # optimizer = optim.SGD(model.parameters(), lr=cfg.LEARNING_RATE, momentum=0.9)
@@ -236,7 +237,7 @@ def test(name, data, tag_idx, model):
     pred_list = []
     true_list = []
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
-    for X, C, POS, REL, DEP, Y in tqdm(data, desc=name, total=len(data)):
+    for SENT, X, C, POS, REL, DEP, Y, P in tqdm(data, desc=name, total=len(data)):
         np.set_printoptions(threshold=np.nan)
         model.init_state(len(X))
         x_var, c_var, pos_var, rel_var, dep_var, y_var, lm_X = to_variables(X, C, POS, REL, DEP, Y)
@@ -312,14 +313,12 @@ def dataset_prep(loadfile=None, savefile=None):
 
 
 def multi_batchify(samples):
-    X, C, POS, REL, DEP, Y = zip(*[(sample.X, sample.C, sample.POS, sample.REL, sample.DEP, sample.Y)
-                                   for sample in samples])
-    X = sorted(X, key=lambda x: len(x), reverse=True)
-    Y = sorted(Y, key=lambda x: len(x), reverse=True)
-    C = sorted(C, key=lambda x: len(x), reverse=True)
-    POS = sorted(POS, key=lambda x: len(x), reverse=True)
+    samples = sorted(samples, key=lambda s: len(s.SENT), reverse=True)
 
-    return X, C, POS, REL, DEP, Y
+    SENT, X, C, POS, REL, DEP, Y, P = zip(*[(sample.SENT, sample.X, sample.C, sample.POS, sample.REL, sample.DEP, sample.Y, sample.P)
+                                            for sample in samples])
+
+    return SENT, X, C, POS, REL, DEP, Y, P
 
 
 def to_variables(X, C, POS, REL, DEP, Y):
@@ -332,7 +331,6 @@ def to_variables(X, C, POS, REL, DEP, Y):
         y_var = list(chain.from_iterable(list(Y)))
 
         lm_X = [[cfg.LM_MAX_VOCAB_SIZE - 1 if (x >= cfg.LM_MAX_VOCAB_SIZE) else x for x in x1d] for x1d in X]
-
 
     else:
         x_var = Variable(cuda.LongTensor([X]))
@@ -358,7 +356,8 @@ def single_run(corpus, index, title, overwrite, only_test=False):
     plot_save_path = os.path.join(cfg.PLOT_SAVE_DIR, title + ".png")
     if not only_test:
         the_model = build_model(corpus.train, corpus.dev, corpus.test,
-                                collate_fn, corpus.tag_idx, corpus.is_oov, corpus.embedding_matrix, model_save_path, plot_save_path)
+                                collate_fn, corpus.tag_idx, corpus.is_oov, corpus.embedding_matrix, model_save_path,
+                                plot_save_path)
     else:
         the_model = torch.load(model_save_path)
 
@@ -367,8 +366,8 @@ def single_run(corpus, index, title, overwrite, only_test=False):
     test_eval, pred_list, true_list = test("test", test_loader, corpus.tag_idx, the_model)
 
     print("Writing Brat File ...")
-    bratfile_full = BratFile(cfg.PRED_BRAT_FULL + title, cfg.TRUE_BRAT_FULL + title, corpus.tag_idx)
-    bratfile_inc = BratFile(cfg.PRED_BRAT_INC + title, cfg.TRUE_BRAT_INC + title, corpus.tag_idx)
+    bratfile_full = Writer(cfg.CONF_DIR, os.path.join(cfg.BRAT_DIR, title), "full_out", corpus.tag_idx)
+    bratfile_inc = Writer(cfg.CONF_DIR, os.path.join(cfg.BRAT_DIR, title), "inc_out", corpus.tag_idx)
 
     # convert idx to label
     test_eval.print_results()
@@ -377,12 +376,10 @@ def single_run(corpus, index, title, overwrite, only_test=False):
     test_eval.write_results(txt_res_file, title + "g={0}".format(cfg.LM_GAMMA), overwrite)
     test_eval.write_csv_results(csv_res_file, title + "g={0}".format(cfg.LM_GAMMA), overwrite)
 
-    # bratfile_full.from_labels([corpus.to_words(sample.X[1:-1]) for sample in corpus.test],
-    #                          [sample.P[1:-1] for sample in corpus.test],
-    #                          true_list, pred_list, doFull=True)
-    # bratfile_inc.from_labels([corpus.to_words(sample.X[1:-1]) for sample in corpus.test],
-    #                         [sample.P for sample in corpus.test],
-    #                         true_list, pred_list, doFull=False)
+    test_loader = DataLoader(corpus.test, batch_size=cfg.BATCH_SIZE, num_workers=28, collate_fn=collate_fn)
+    sents = [(sent, p) for SENT, X, C, POS, REL, DEP, Y, P in test_loader for sent, p in zip(SENT, P)]
+    bratfile_full.from_labels(sents, true_list, pred_list, doFull=True)
+    bratfile_inc.from_labels(sents, true_list, pred_list, doFull=False)
 
     return test_eval
 
@@ -403,7 +400,7 @@ def build_cmd_parser():
                         help='If Language model is to be used, gamma is a gating variable that controls '
                              'how important LM should be. A float number between (0 - 1)')
 
-    parser.add_argument('--char_level', required=True, choices=["None", "Input", "Attention"],
+    parser.add_argument('--char_level', required=True, choices=["None", "Input", "Attention", "Highway"],
                         help='The char level embedding to add on top of the bi LSTM.')
 
     parser.add_argument('--pos', required=True, choices=["No", "Yes"],
@@ -450,7 +447,7 @@ def main(nrun=1):
     cfg.DEP_WORD_FEATURE = args.dep_word
     cfg.LM_GAMMA = args.lm_gamma
     for run in range(nrun):
-        dataset = dataset_prep(savefile=cfg.DB)
+        dataset = dataset_prep(loadfile=cfg.DB)
         cfg.CATEGORIES = len(dataset.tag_idx.keys()) + 2  # +2 for start and end tags of a seq
         dataset.tag_idx['<s>'] = len(dataset.tag_idx.keys())
         dataset.tag_idx['</s>'] = len(dataset.tag_idx.keys())

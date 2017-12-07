@@ -53,7 +53,7 @@ TRAIN_PER = 100  # how much of the train dataset should be used in training.
 
 LM_HIDDEN_SIZE = 200
 
-LM_MAX_VOCAB_SIZE = 7500
+LM_MAX_VOCAB_SIZE = 7500  # next try 3000
 
 WORD_VOCAB = 0
 
@@ -85,6 +85,10 @@ UNK = "<unk>"
 MIN_WORD_COUNT = 3  # minimum word count for it to be part of vocabulary
 
 RANDOM_TRAIN = True
+
+BRAT_DIR = os.path.join(CURRENT_DIR, "results/brat_results")
+
+CONF_DIR = os.path.join(BRAT_DIR, "confs")
 
 PRED_BRAT_FULL = "results/brat_results/pred/brat_out"
 TRUE_BRAT_FULL = "results/brat_results/true/brat_out"

@@ -39,7 +39,7 @@ import numpy as np
 from corpus.TextFile import TextFile
 from preprocessing.text_processing import gen_list2id_dict
 
-Data = namedtuple('Data', ['X', 'C', 'Y', 'P', 'POS', 'REL', 'DEP'])
+Data = namedtuple('Data', ['SENT', 'X', 'C', 'Y', 'P', 'POS', 'REL', 'DEP'])
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ class CustomDataset(data.Dataset):
         p = self.pnos[item]
         assert len(x) == len(f) + 2, (len(x), len(f), p)
         assert len(x) == len(f_pos)
-        return Data(x, c, y, p, f_pos, f_rel, f_dep)
+        return Data(sent, x, c, y, p, f_pos, f_rel, f_dep)
 
     def __len__(self):
         return len(self.tokens2d)
