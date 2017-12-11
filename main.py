@@ -53,7 +53,7 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
         print("No, UNKNOWN token is not out of vocab")
 
     for SENT, X, C, POS, REL, DEP, Y, P in t:
-
+        batch_size = len(SENT)
         # zero the parameter gradients
         optimizer.zero_grad()
         model.zero_grad()
@@ -102,7 +102,10 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
                 total_loss = seq_loss + Variable(cuda.FloatTensor([gamma])) * (lm_f_loss + lm_b_loss)
 
         else:
-            total_loss = seq_loss
+            if cfg.CHAR_LEVEL == "Attention":
+                total_loss = seq_loss + char_att_loss
+            else:
+                total_loss = seq_loss
 
         desc = "total_loss: {0:.4f} = seq_loss: {1:.4f}".format(to_scalar(total_loss),
                                                                 to_scalar(seq_loss))
@@ -168,7 +171,7 @@ def build_model(train_dataset, dev_dataset, test_dataset,
 
     # remove paramters that have required_grad = False
 
-    optimizer = optim.Adadelta(model.parameters(), lr=cfg.LEARNING_RATE)
+    optimizer = optim.Adadelta(filter(lambda p: p.requires_grad, model.parameters()), lr=cfg.LEARNING_RATE)
     # optimizer = optim.SGD(model.parameters(), lr=cfg.LEARNING_RATE, momentum=0.9)
     optimizer.zero_grad()
     model.zero_grad()
