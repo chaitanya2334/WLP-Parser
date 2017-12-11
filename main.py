@@ -239,7 +239,9 @@ def test(name, data, tag_idx, model):
     total = 0
     pred_list = []
     true_list = []
-    evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
+    full_eval = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
+    only_ents_eval = Evaluator("test_ents_only", [0, 1], skip_label=['B-Action', 'I-Action'],
+                               main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
     for SENT, X, C, POS, REL, Y, P in tqdm(data, desc=name, total=len(data)):
         np.set_printoptions(threshold=np.nan)
         model.init_state(len(X))
@@ -253,13 +255,15 @@ def test(name, data, tag_idx, model):
         pred = argmax(seq_out)
         preds = roll(pred, seq_lengths)
         for pred, x, y in zip(preds, X, Y):
-            evaluator.append_data(0, pred, x, y)
+            full_eval.append_data(0, pred, x, y)
+            only_ents_eval.append_data(0, pred, x, y)
             pred_list.append(pred[1:-1])
             true_list.append(y[1:-1])
 
-    evaluator.classification_report()
+    full_eval.classification_report()
+    only_ents_eval.classification_report()
 
-    return evaluator, pred_list, true_list
+    return full_eval, pred_list, true_list
 
 
 # pred and true are lists of numpy arrays. each numpy array represents a sample
@@ -319,7 +323,7 @@ def multi_batchify(samples):
     samples = sorted(samples, key=lambda s: len(s.SENT), reverse=True)
 
     SENT, X, C, POS, REL, Y, P = zip(*[(sample.SENT, sample.X, sample.C, sample.POS, sample.REL, sample.Y, sample.P)
-                                            for sample in samples])
+                                       for sample in samples])
 
     return SENT, X, C, POS, REL, Y, P
 
