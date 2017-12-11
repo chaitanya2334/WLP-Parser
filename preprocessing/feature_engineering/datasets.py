@@ -270,11 +270,11 @@ class Window:
 
         # After this, each self.token.feature_values will be a simple list
         # of feature values, e.g. ["w2v=875", "bc=48", ...]
-        for feature_values in features_values:
-            assert isinstance(feature_values, list)
-            assert len(feature_values) == len(self.tokens)
+        for feature_value in features_values:
+            assert isinstance(feature_value, list)
+            assert len(feature_value) == len(self.tokens)
             for token_idx in range(len(self.tokens)):
-                self.tokens[token_idx].feature_values.extend(feature_values[token_idx])
+                self.tokens[token_idx].feature_values.extend(feature_value[token_idx])
 
     @staticmethod
     def convert_list_2_dict(of_list):
@@ -306,10 +306,9 @@ class Window:
         end = min(len(self.tokens), word_index + 1 + skipchain_right)
         for i, token in enumerate(self.tokens[start:end]):
             diff = start + i - word_index
-            feature_values = ["%d:%s" % (diff, feature_value) \
+            feature_values = ["%d:%s" % (diff, feature_value)
                               for feature_value in token.feature_values]
             all_feature_values.extend(feature_values)
-
         all_feature_values = self.convert_list_2_dict(all_feature_values)
         return all_feature_values
 
