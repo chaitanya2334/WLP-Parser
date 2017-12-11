@@ -206,7 +206,7 @@ def generate_examples(windows, nb_append=None, nb_skip=0, verbose=True):
 class Window:
     """Encapsulates a small window of text/tokens."""
 
-    def __init__(self, tokens, pno, pos, dep):
+    def __init__(self, tokens, pno, pos, dep=None):
         """Initialize a new Window object.
 
         Args:
@@ -272,7 +272,7 @@ class Window:
         # of feature values, e.g. ["w2v=875", "bc=48", ...]
         for feature_value in features_values:
             assert isinstance(feature_value, list)
-            assert len(feature_value) == len(self.tokens)
+            assert len(feature_value) == len(self.tokens), (len(feature_value), len(self.tokens))
             for token_idx in range(len(self.tokens)):
                 self.tokens[token_idx].feature_values.extend(feature_value[token_idx])
 

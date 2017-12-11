@@ -189,7 +189,7 @@ class MultiBatchSeqNet(nn.Module):
 
         return pdded_out, hidden_state
 
-    def forward(self, sent_idx_seq, char_idx_seq, pos, rel):
+    def forward(self, sent_idx_seq, char_idx_seq, pos):
         cfg.ver_print("Sent Index sequence", sent_idx_seq)
         padded_seq, seq_lengths = self.pad(sent_idx_seq)
         padded_seq = Variable(torch.LongTensor(padded_seq)).cuda()
@@ -213,9 +213,6 @@ class MultiBatchSeqNet(nn.Module):
             padded_pos = Variable(torch.LongTensor(padded_pos)).cuda()
             pos_emb = self.pos_emb(padded_pos)
             inp = cat([inp, pos_emb], dim=2)
-        if self.dep_rel_feat == "Yes":
-            rel_emb = self.rel_emb(rel)
-            inp = cat([inp, rel_emb], dim=2)
 
         # emb is now of size(1 x seq_len x EMB_DIM)
         cfg.ver_print("Embedding for the Sequence", inp)

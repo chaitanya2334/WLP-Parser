@@ -78,16 +78,13 @@ def create_features(articles, verbose=True):
     pos = PosTagger(cfg.STANFORD_POS_JAR_FILEPATH, cfg.STANFORD_MODEL_FILEPATH,
                     cache_filepath=None)
 
-    dep_p = StanfordDependencyParser(path_to_jar=cfg.STANFORD_PARSER_JAR,
-                                     path_to_models_jar=cfg.STANFORD_PARSER_MODEL_JAR)
-
     # create feature generators
     result = [
         # EntityTypeFeatures(),
         # NearestEntityFeatures(),
         LemmatizerFeatures(pos, ug_all_top),
-        DepGraphFeatures(),
-        DepTypeFeatures(),
+        # DepGraphFeatures(),
+        # DepTypeFeatures(),
         # BrownClusterFeature(brown),
         # BrownClusterBitsFeature(brown, brown_bit_series),
         BigramFeature(ug_all_top),

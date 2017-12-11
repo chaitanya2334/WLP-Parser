@@ -52,26 +52,26 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
     else:
         print("No, UNKNOWN token is not out of vocab")
 
-    for SENT, X, C, POS, REL, Y, P in t:
+    for SENT, X, C, POS, Y, P in t:
         batch_size = len(SENT)
         # zero the parameter gradients
         optimizer.zero_grad()
         model.zero_grad()
         model.init_state(len(X))
 
-        x_var, c_var, pos_var, rel_var, y_var, lm_X = to_variables(X, C, POS, REL, Y)
+        x_var, c_var, pos_var, y_var, lm_X = to_variables(X, C, POS, Y)
 
         np.set_printoptions(threshold=np.nan)
 
         if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, seq_lengths, emb, char_emb = model(x_var, c_var, pos_var, rel_var)
+            lm_f_out, lm_b_out, seq_out, seq_lengths, emb, char_emb = model(x_var, c_var, pos_var)
             unrolled_x_var = list(chain.from_iterable(x_var))
 
             not_oov_seq = [-1 if is_oov[idx] else 1 for idx in unrolled_x_var]
             char_att_loss = att_loss(emb.detach(), char_emb, Variable(torch.cuda.LongTensor(not_oov_seq)))
 
         else:
-            lm_f_out, lm_b_out, seq_out, seq_lengths = model(x_var, c_var, pos_var, rel_var)
+            lm_f_out, lm_b_out, seq_out, seq_lengths = model(x_var, c_var, pos_var)
 
         logger.debug("lm_f_out : {0}".format(lm_f_out))
         logger.debug("lm_b_out : {0}".format(lm_b_out))
@@ -83,7 +83,7 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
         pred = argmax(seq_out)
 
         logger.debug("Predicted output {0}".format(pred))
-        seq_loss = seq_criterion(seq_out, Variable(torch.LongTensor(y_var)).cuda())/batch_size
+        seq_loss = seq_criterion(seq_out, Variable(torch.LongTensor(y_var)).cuda()) / batch_size
 
         # to limit the vocab size of the sample sentence ( trick used to improve lm model)
         # TODO make sure that start and end symbol of sentence gets through this filtering.
@@ -242,15 +242,15 @@ def test(name, data, tag_idx, model):
     full_eval = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
     only_ents_eval = Evaluator("test_ents_only", [0, 1], skip_label=['B-Action', 'I-Action'],
                                main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
-    for SENT, X, C, POS, REL, Y, P in tqdm(data, desc=name, total=len(data)):
+    for SENT, X, C, POS, Y, P in tqdm(data, desc=name, total=len(data)):
         np.set_printoptions(threshold=np.nan)
         model.init_state(len(X))
-        x_var, c_var, pos_var, rel_var, y_var, lm_X = to_variables(X, C, POS, REL, Y)
+        x_var, c_var, pos_var, y_var, lm_X = to_variables(X=X, C=C, POS=POS, Y=Y)
 
         if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, seq_lengths, emb, char_emb = model(x_var, c_var, pos_var, rel_var)
+            lm_f_out, lm_b_out, seq_out, seq_lengths, emb, char_emb = model(x_var, c_var, pos_var)
         else:
-            lm_f_out, lm_b_out, seq_out, seq_lengths = model(x_var, c_var, pos_var, rel_var)
+            lm_f_out, lm_b_out, seq_out, seq_lengths = model(x_var, c_var, pos_var)
 
         pred = argmax(seq_out)
         preds = roll(pred, seq_lengths)
@@ -322,18 +322,17 @@ def dataset_prep(loadfile=None, savefile=None):
 def multi_batchify(samples):
     samples = sorted(samples, key=lambda s: len(s.SENT), reverse=True)
 
-    SENT, X, C, POS, REL, Y, P = zip(*[(sample.SENT, sample.X, sample.C, sample.POS, sample.REL, sample.Y, sample.P)
-                                       for sample in samples])
+    SENT, X, C, POS, Y, P = zip(*[(sample.SENT, sample.X, sample.C, sample.POS, sample.Y, sample.P)
+                                  for sample in samples])
 
-    return SENT, X, C, POS, REL, Y, P
+    return SENT, X, C, POS, Y, P
 
 
-def to_variables(X, C, POS, REL, Y):
+def to_variables(X, C, POS, Y):
     if cfg.BATCH_TYPE == "multi":
         x_var = X
         c_var = C
         pos_var = POS
-        rel_var = REL
         y_var = list(chain.from_iterable(list(Y)))
 
         lm_X = [[cfg.LM_MAX_VOCAB_SIZE - 1 if (x >= cfg.LM_MAX_VOCAB_SIZE) else x for x in x1d] for x1d in X]
@@ -343,11 +342,10 @@ def to_variables(X, C, POS, REL, Y):
         c_var = C
         # f_var = Variable(torch.from_numpy(f)).float().unsqueeze(dim=0).cuda()
         pos_var = Variable(torch.from_numpy(POS).cuda()).unsqueeze(dim=0)
-        rel_var = Variable(torch.from_numpy(REL).cuda()).unsqueeze(dim=0)
         lm_X = [cfg.LM_MAX_VOCAB_SIZE - 1 if (x >= cfg.LM_MAX_VOCAB_SIZE) else x for x in X]
         y_var = Variable(cuda.LongTensor(Y))
 
-    return x_var, c_var, pos_var, rel_var, y_var, lm_X
+    return x_var, c_var, pos_var, y_var, lm_X
 
 
 def single_run(corpus, index, title, overwrite, only_test=False):

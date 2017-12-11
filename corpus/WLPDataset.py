@@ -40,18 +40,17 @@ from corpus.TextFile import TextFile
 from preprocessing.text_processing import gen_list2id_dict
 import pprint
 
-Data = namedtuple('Data', ['SENT', 'X', 'C', 'Y', 'P', 'POS', 'REL'])
+Data = namedtuple('Data', ['SENT', 'X', 'C', 'Y', 'P', 'POS'])
 
 logger = logging.getLogger(__name__)
 
 
 class CustomDataset(data.Dataset):
-    def __init__(self, protocols, char_index, word_index, pos_ids, rel_ids, tag_idx):
+    def __init__(self, protocols, char_index, word_index, pos_ids, tag_idx):
         self.protocols = protocols
         self.char_index = char_index
         self.word_index = word_index
         self.pos_index = pos_ids
-        self.rel_index = rel_ids
         self.tag_idx = tag_idx
         self.collection = self.boil_protocols()
 
@@ -82,15 +81,9 @@ class CustomDataset(data.Dataset):
         f_pos = np.insert(f_pos, f_pos.size, self.pos_index['NULL'])
         f_pos = list(f_pos.tolist())
 
-        f_rel = f['0:rel'].as_matrix()
-
-        # add rel tag for start and end tag
-        f_rel = np.insert(f_rel, 0, self.rel_index['NULL'])
-        f_rel = np.insert(f_rel, f_rel.size, self.rel_index['NULL'])
-
         assert len(x) == len(f) + 2, (len(x), len(f), pno)
         assert len(x) == len(f_pos)
-        return Data(sent, x, c, y, pno, f_pos, f_rel)
+        return Data(sent, x, c, y, pno, f_pos)
 
     def __len__(self):
         return len(self.collection)
@@ -185,7 +178,7 @@ class WLPDataset(object):
             print(
                 "Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
 
-            self.enc, self.f_df, self.f_dep = self.__gen_all_features()
+            self.enc, self.f_df = self.__gen_all_features(do_dep=False)
 
     def gen_word_index(self, sents, support_start_stop):
         """Updates internal vocabulary based on a list of texts.
@@ -303,11 +296,11 @@ class WLPDataset(object):
         print(ntrain_cut)
 
         self.train = CustomDataset(self.protocols[0:ntrain_cut], self.char_index, self.word_index, self.pos_ids,
-                                   self.rel_ids, self.tag_idx)
+                                   self.tag_idx)
         self.dev = CustomDataset(self.protocols[ntrain:ndev], self.char_index, self.word_index, self.pos_ids,
-                                 self.rel_ids, self.tag_idx)
+                                 self.tag_idx)
         self.test = CustomDataset(self.protocols[ndev:ntest], self.char_index, self.word_index, self.pos_ids,
-                                  self.rel_ids, self.tag_idx)
+                                  self.tag_idx)
 
         print("train: \n\tno. of protocols = {0} \n\tno. of sents = {1}".format(
             len(self.train.protocols), len(self.train)))
@@ -331,7 +324,7 @@ class WLPDataset(object):
 
         return differences
 
-    def __gen_all_features(self):
+    def __gen_all_features(self, do_dep=False):
         # updates each protocol in self.protocols with its feature set.
         i = 0
         p_cut_list = [0]
@@ -341,12 +334,19 @@ class WLPDataset(object):
         for p in tqdm(self.protocols, desc="Collecting features"):
             if len(p.tokens2d) != len(p.pos_tags):
                 print(p.protocol_name, self.__get_missing(p.tokens2d, p.pos_tags))
+
+            if do_dep:
+                deps = p.get_deps()
+
             for x, (tokens1d, pos) in enumerate(zip(p.tokens2d, p.pos_tags)):
                 pno = p.protocol_name
-                deps = p.get_deps()
-                feature_dicts = self.__gen_single_feature(tokens1d, pno, pos, deps[x])
+                if do_dep and deps:
+                    d = deps[x]
+                else:
+                    d = None
+
+                feature_dicts = self.__gen_single_feature(tokens1d, pno, pos, d)
                 mega_list.extend(feature_dicts)
-                # mega_df = pd.concat([mega_df, df])
 
             p_cut_list.append(i + p.word_cnt)
             i += p.word_cnt
@@ -366,27 +366,31 @@ class WLPDataset(object):
         self.pos_ids = {k: v for v, k in enumerate(pos_id_list)}
         self.pos_ids['NULL'] = len(self.pos_ids)
 
-        rel_id_list = unique_ids['0:rel'].get_values().tolist()
-        self.rel_ids = {k: v for v, k in enumerate(rel_id_list)}
-        self.rel_ids['NULL'] = len(self.rel_ids)
+        if do_dep:
 
-        dep_id_list = unique_ids['0:gov'].get_values().tolist()
-        self.dep_ids = {k: v for v, k in enumerate(dep_id_list)}
-        self.dep_ids['NULL'] = len(self.dep_ids)
+            rel_id_list = unique_ids['0:rel'].get_values().tolist()
+            self.rel_ids = {k: v for v, k in enumerate(rel_id_list)}
+            self.rel_ids['NULL'] = len(self.rel_ids)
 
-        f_dep = mega_df['0:gov'].as_matrix().tolist()
-        dep_words = [list(self.dep_ids.keys())[list(self.dep_ids.values()).index(word_id)] for word_id in f_dep]
+            dep_id_list = unique_ids['0:gov'].get_values().tolist()
+            self.dep_ids = {k: v for v, k in enumerate(dep_id_list)}
+            self.dep_ids['NULL'] = len(self.dep_ids)
 
-        # to lowercase
-        dep_words = [word.lower() for word in dep_words]
+            f_dep = mega_df['0:gov'].as_matrix().tolist()
+            dep_words = [list(self.dep_ids.keys())[list(self.dep_ids.values()).index(word_id)] for word_id in f_dep]
 
-        # numbers to a single representation
-        dep_words = [re.sub(r'\d', '0', word) for word in dep_words]
-        for word in dep_words:
-            try:
-                f_dep.append(self.word_index[word])
-            except KeyError:
-                f_dep.append(self.word_index[cfg.UNK])
+            # to lowercase
+            dep_words = [word.lower() for word in dep_words]
+
+            # numbers to a single representation
+            dep_words = [re.sub(r'\d', '0', word) for word in dep_words]
+            for word in dep_words:
+                try:
+                    f_dep.append(self.word_index[word])
+                except KeyError:
+                    f_dep.append(self.word_index[cfg.UNK])
+
+            self.f_dep = f_dep
 
         print(tabulate(mega_df[:10], headers='keys', tablefmt='psql'))
         enc = OneHotEncoder()
@@ -396,9 +400,9 @@ class WLPDataset(object):
         for i, p in enumerate(self.protocols):
             p.f_df = mega_df[p_cut_list[i]:p_cut_list[i + 1]]
 
-        return enc, mega_df, f_dep
+        return enc, mega_df
 
-    def __gen_single_feature(self, tokens1d, pno, pos, dep):
+    def __gen_single_feature(self, tokens1d, pno, pos, dep=None):
         window = Window(tokens1d, pno, pos, dep)
         window.apply_features(self.feat_list)
         feature_dicts = []
