@@ -55,6 +55,8 @@ class ProtoFile:
             self.tag_0_id = 'T0'
             self.tag_0_name = 'O'
             self.tokens2d = self.gen_tokens(labels_allowed=cfg.LABELS)
+            self.word_cnt = sum(len(tokens1d) for tokens1d in self.tokens2d)
+            self.f_df = None
             if gen_features:
                 if genia:
                     self.pos_tags = self.__gen_pos_genia(genia)

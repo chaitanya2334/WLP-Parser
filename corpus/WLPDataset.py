@@ -40,37 +40,43 @@ from corpus.TextFile import TextFile
 from preprocessing.text_processing import gen_list2id_dict
 import pprint
 
-Data = namedtuple('Data', ['SENT', 'X', 'C', 'Y', 'P', 'POS', 'REL', 'DEP'])
+Data = namedtuple('Data', ['SENT', 'X', 'C', 'Y', 'P', 'POS', 'REL'])
 
 logger = logging.getLogger(__name__)
 
 
 class CustomDataset(data.Dataset):
-    def __init__(self, tokens2d, cut_list, enc, f_df, pnos, char_index, word_index, pos_ids, rel_ids, dep_ids,
-                 f_dep, tag_idx):
-        self.tokens2d = tokens2d
-        self.cut_list = cut_list
-        self.enc = enc
-        self.f_df = f_df
-        self.pnos = pnos
+    def __init__(self, protocols, char_index, word_index, pos_ids, rel_ids, tag_idx):
+        self.protocols = protocols
         self.char_index = char_index
         self.word_index = word_index
         self.pos_index = pos_ids
         self.rel_index = rel_ids
-        self.dep_index = dep_ids
-        self.f_dep = f_dep
-
         self.tag_idx = tag_idx
+        self.collection = self.boil_protocols()
+
+    def boil_protocols(self):
+        # combines all prtocol data to generate a list [(sent, label, f), ..]
+        collection = []
+        for p in self.protocols:
+            i = 0
+            pno = p.protocol_name
+            for token1d in p.tokens2d:
+                sent = [token.word for token in token1d]
+                labels = [token.label for token in token1d]
+                f = p.f_df[i:i + len(token1d)]
+                i += len(token1d)
+                collection.append((sent, labels, f, pno))
+
+        return collection
 
     def __getitem__(self, item):
-        sent = [token.word for token in self.tokens2d[item]]
-        labels = [token.label for token in self.tokens2d[item]]
+        sent, labels, f, pno = self.collection[item]
         x = self.__gen_sent_idx_seq(sent)
         c = self.__prep_char_idx_seq(sent)
         y = [self.tag_idx['<s>']] + [self.tag_idx[label] for label in labels] + [self.tag_idx['</s>']]
-
-        f = self.f_df[self.cut_list[item]:self.cut_list[item + 1]]
         f_pos = f['0:pos'].as_matrix()
+
         # add pos tag for start and end tag
         f_pos = np.insert(f_pos, 0, self.pos_index['NULL'])
         f_pos = np.insert(f_pos, f_pos.size, self.pos_index['NULL'])
@@ -82,18 +88,12 @@ class CustomDataset(data.Dataset):
         f_rel = np.insert(f_rel, 0, self.rel_index['NULL'])
         f_rel = np.insert(f_rel, f_rel.size, self.rel_index['NULL'])
 
-        f_dep = self.f_dep[self.cut_list[item]:self.cut_list[item + 1]]
-
-        f_dep.insert(0, self.word_index['<s>'])
-        f_dep.insert(len(f_dep), self.word_index['</s>'])
-        # f = self.enc.transform(f.as_matrix()).todense()
-        p = self.pnos[item]
-        assert len(x) == len(f) + 2, (len(x), len(f), p)
+        assert len(x) == len(f) + 2, (len(x), len(f), pno)
         assert len(x) == len(f_pos)
-        return Data(sent, x, c, y, p, f_pos, f_rel, f_dep)
+        return Data(sent, x, c, y, pno, f_pos, f_rel)
 
     def __len__(self):
-        return len(self.tokens2d)
+        return len(self.collection)
 
     def __gen_sent_idx_seq(self, sent):
         cfg.ver_print("word_index", self.word_index)
@@ -169,9 +169,10 @@ class WLPDataset(object):
         self.protocols = self.read_protocols(genia=None, gen_features=True, dir_path=cfg.ARTICLES_FOLDERPATH)
 
         self.tag_idx = self.make_bio_dict(cfg.LABELS)
-        self.tokens2d, self.pnos = self.__gen_data(replace_digit=cfg.REPLACE_DIGITS)
+        # self.tokens2d, self.pnos = self.__gen_data(replace_digit=cfg.REPLACE_DIGITS)
+
         # self.verify_tokens(self.tokens2d)
-        self.total = len(self.tokens2d)
+        self.p_cnt = len(self.protocols)
         self.train = None
         self.dev = None
         self.test = None
@@ -184,7 +185,7 @@ class WLPDataset(object):
             print(
                 "Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
 
-            self.enc, self.f_df, self.cut_list, self.f_dep = self.__gen_all_features()
+            self.enc, self.f_df, self.f_dep = self.__gen_all_features()
 
     def gen_word_index(self, sents, support_start_stop):
         """Updates internal vocabulary based on a list of texts.
@@ -229,7 +230,8 @@ class WLPDataset(object):
     def prepare_embeddings(self, load_bin=True, support_start_stop=True):
         print("Preparing Embeddings ...")
         # get all the sentences each sentence is a sequence of words (list of words)
-        sents = [[token.word for token in tokens1d] for tokens1d in self.tokens2d]
+        tokens2d = list(itertools.chain.from_iterable([p.tokens2d for p in self.protocols]))
+        sents = [[token.word for token in tokens1d] for tokens1d in tokens2d]
         # train a skip gram model to generate word vectors. Vectors will be of dimension given by 'size' parameter.
         print("         Loading Word2Vec ...")
         if load_bin:
@@ -294,29 +296,25 @@ class WLPDataset(object):
 
     def gen_data(self, per, train_per=100, gen_feat_again=False):
 
-        ntrain, ndev, ntest = self.__split_dataset(per, self.total)
+        ntrain, ndev, ntest = self.__split_dataset(per, self.p_cnt)
 
         ntrain_cut = int((train_per * ntrain) / 100)
 
         print(ntrain_cut)
 
-        self.train = CustomDataset(self.tokens2d[0:ntrain_cut], self.cut_list[0:ntrain_cut + 1],
-                                   self.enc, self.f_df, self.pnos[0:ntrain_cut],
-                                   self.char_index, self.word_index, self.pos_ids, self.rel_ids, self.dep_ids,
-                                   self.f_dep, self.tag_idx)
-        self.dev = CustomDataset(self.tokens2d[ntrain:ndev], self.cut_list[ntrain:ndev + 1],
-                                 self.enc, self.f_df, self.pnos[ntrain:ndev],
-                                 self.char_index, self.word_index, self.pos_ids, self.rel_ids, self.dep_ids,
-                                 self.f_dep, self.tag_idx)
-        self.test = CustomDataset(self.tokens2d[ndev:ntest], self.cut_list[ndev:ntest + 1],
-                                  self.enc,
-                                  self.f_df, self.pnos[ndev:ntest],
-                                  self.char_index, self.word_index, self.pos_ids, self.rel_ids, self.dep_ids,
-                                  self.f_dep, self.tag_idx)
+        self.train = CustomDataset(self.protocols[0:ntrain_cut], self.char_index, self.word_index, self.pos_ids,
+                                   self.rel_ids, self.tag_idx)
+        self.dev = CustomDataset(self.protocols[ntrain:ndev], self.char_index, self.word_index, self.pos_ids,
+                                 self.rel_ids, self.tag_idx)
+        self.test = CustomDataset(self.protocols[ndev:ntest], self.char_index, self.word_index, self.pos_ids,
+                                  self.rel_ids, self.tag_idx)
 
-        print("train: no. of sents = {0}".format(len(self.train)))
-        print("dev: no. of sents = {0}".format(len(self.dev)))
-        print("test: no. of sents = {0}".format(len(self.test)))
+        print("train: \n\tno. of protocols = {0} \n\tno. of sents = {1}".format(
+            len(self.train.protocols), len(self.train)))
+        print("dev: \n\tno. of protocols = {0} \n\tno. of sents = {1}".format(
+            len(self.dev.protocols), len(self.dev)))
+        print("test: \n\tno. of protocols = {0} \n\tno. of sents = {1}".format(
+            len(self.test.protocols), len(self.test)))
 
     @staticmethod
     def __get_missing(tokens2d, pos_tags):
@@ -334,22 +332,24 @@ class WLPDataset(object):
         return differences
 
     def __gen_all_features(self):
+        # updates each protocol in self.protocols with its feature set.
         i = 0
-        cut_list = [0]
+        p_cut_list = [0]
         mega_list = []
 
         print("Loading Dep Graphs ...")
-        for protocol in tqdm(self.protocols, desc="Collecting features"):
-            if len(protocol.tokens2d) != len(protocol.pos_tags):
-                print(protocol.protocol_name, self.__get_missing(protocol.tokens2d, protocol.pos_tags))
-            for x, (tokens1d, pos) in enumerate(zip(protocol.tokens2d, protocol.pos_tags)):
-                pno = protocol.protocol_name
-                deps = protocol.get_deps()
+        for p in tqdm(self.protocols, desc="Collecting features"):
+            if len(p.tokens2d) != len(p.pos_tags):
+                print(p.protocol_name, self.__get_missing(p.tokens2d, p.pos_tags))
+            for x, (tokens1d, pos) in enumerate(zip(p.tokens2d, p.pos_tags)):
+                pno = p.protocol_name
+                deps = p.get_deps()
                 feature_dicts = self.__gen_single_feature(tokens1d, pno, pos, deps[x])
                 mega_list.extend(feature_dicts)
                 # mega_df = pd.concat([mega_df, df])
-                cut_list.append(i + len(tokens1d))
-                i += len(tokens1d)
+
+            p_cut_list.append(i + p.word_cnt)
+            i += p.word_cnt
 
         mega_df = pd.DataFrame(mega_list)
         mega_df = mega_df.fillna(0)
@@ -392,7 +392,11 @@ class WLPDataset(object):
         enc = OneHotEncoder()
         enc.fit(mega_df.as_matrix())
 
-        return enc, mega_df, cut_list, f_dep
+        # redistribute the one hot features generated into each protocol
+        for i, p in enumerate(self.protocols):
+            p.f_df = mega_df[p_cut_list[i]:p_cut_list[i + 1]]
+
+        return enc, mega_df, f_dep
 
     def __gen_single_feature(self, tokens1d, pno, pos, dep):
         window = Window(tokens1d, pno, pos, dep)

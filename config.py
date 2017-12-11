@@ -4,12 +4,6 @@ import os
 # directory of the config file
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 
-# filepath to the corpus
-# The corpus must have one article/document per line.
-# Each named entity must be tagged in the form word/LABEL, e.g.
-#   John/PER Doe/PER did something yesterday. Then he did something else.
-#   Washington/LOC D.C./LOC is the capital of the U.S.
-#   ....
 ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "simple_input")
 
 PUBMED_AND_PMC_W2V_BIN = os.path.join(CURRENT_DIR, "preprocessing/PubMed-and-PMC-w2v.bin")
