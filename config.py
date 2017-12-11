@@ -82,7 +82,7 @@ SENT_START = "<s>"
 SENT_END = "</s>"
 
 UNK = "<unk>"
-MIN_WORD_COUNT = 3  # minimum word count for it to be part of vocabulary
+MIN_WORD_COUNT = 1  # minimum word count for it to be part of vocabulary
 
 RANDOM_TRAIN = True
 
@@ -109,8 +109,11 @@ CSV_RESULT_DIR = os.path.join(CURRENT_DIR, "results/csv_results")
 
 DEP_PICKLE_DIR = os.path.join(CURRENT_DIR, "results/pickles/dep_graphs")
 POS_PICKLE_DIR = os.path.join(CURRENT_DIR, "results/pickles/pos_tags")
+POS_GENIA_DIR = os.path.join(CURRENT_DIR, "results/pickles/pos_genia_tags")
+DEP_GENIA_DIR = os.path.join(CURRENT_DIR, "results/pickles/dep_genia_graphs")
 
 DB = os.path.join(CURRENT_DIR, "results/pickles/datasets.p")
+DB_MAXENT = os.path.join(CURRENT_DIR, "results/pickles/dataset_maxent.p")
 
 # Number of windows to use during training (offset is COUNT_WINDOWS_TEST, i.e. test windows will
 # be loaded first)
