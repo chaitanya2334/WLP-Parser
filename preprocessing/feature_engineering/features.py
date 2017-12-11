@@ -85,7 +85,7 @@ def create_features(articles, verbose=True):
     result = [
         # EntityTypeFeatures(),
         # NearestEntityFeatures(),
-        LemmatizerFeatures(pos),
+        LemmatizerFeatures(pos, ug_all_top),
         DepGraphFeatures(),
         DepTypeFeatures(),
         # BrownClusterFeature(brown),
@@ -174,37 +174,22 @@ class DepTypeFeatures(object):
             if d[0] == word:
                 rels.append(r)
 
-        return rels
+        if rels:
+            return rels[0]
+        return "#"
 
     def convert_window(self, window):
         dep_graph = window.dep
         # dep_graph = self.dependency_parse(window)
 
         t = dep_graph.triples()
-
+        t = list(t)
         result = []
         for token in window.tokens:
-            rels = self.get_rel(t, token.word)
-
-            result.append(["rel={0}".format(rel) for rel in rels])
+            rel = self.get_rel(t, token.word)
+            result.append(["rel={0}".format(rel)])
 
         return result
-
-    def dependency_parse(self, window):
-        # dependency parser breaks if there are two numbers next to each other in a very specific way.
-        # this is a work around
-        def digits(string):
-
-            n = ''.join(x for x in string if x.isdigit())
-            return n
-
-        tokens = copy.deepcopy(window.tokens)
-        for i in range(len(tokens) - 1):
-            if 0 < len(digits(tokens[i].word)) < 4 and len(digits(tokens[i + 1].word)) > 5:
-                tokens[i + 1].word = '0'
-
-        dep_graph = self.dep_parser.raw_parse(" ".join([token.word for token in tokens]))
-        return dep_graph
 
 
 class DepGraphFeatures(object):
@@ -214,10 +199,11 @@ class DepGraphFeatures(object):
 
     @staticmethod
     def get_deps(triples, word):
-        dep = []
+        dep = (0, 0)
         for g, r, d in triples:
             if g[0] == word:
-                dep.append(d)
+                dep = d
+                return dep
 
         return dep
 
@@ -231,46 +217,25 @@ class DepGraphFeatures(object):
 
     def convert_window(self, window):
         dep_graph = window.dep
-        # dep_graph = self.dependency_parse(window)
         t = dep_graph.triples()
-
+        t = list(t)
         result = []
         for token in window.tokens:
-            deps = self.get_deps(t, token.word)
+            dep = self.get_deps(t, token.word)
             gov = self.get_govs(t, token.word)
 
-            word_list = []
-            for depend in deps:
-                word_list.append("dep={0}".format(depend[0]))
-            word_list.append("gov={0}".format(gov[0]))
+            word_list = ["dep={0}".format(dep[0]), "gov={0}".format(gov[0])]
             result.append(word_list)
 
         return result
-
-    def dependency_parse(self, window):
-        # dependency parser breaks if there are two numbers next to each other in a very specific way.
-        # this is a work around
-        def digits(string):
-
-            n = ''.join(x for x in string if x.isdigit())
-            return n
-
-        tokens = copy.deepcopy(window.tokens)
-        for i in range(len(tokens) - 1):
-            if 0 < len(digits(tokens[i].word)) < 4 and len(digits(tokens[i + 1].word)) > 5:
-                tokens[i + 1].word = '0'
-
-        dep_graph = self.dep_parser.raw_parse(" ".join([token.word for token in tokens]))
-
-
-        return dep_graph
 
 
 class LemmatizerFeatures(object):
     # syn + lemma
 
-    def __init__(self, pos):
+    def __init__(self, pos, unigrams):
         self.pos_tagger = pos
+        self.unigrams = unigrams
         self.wordnet_lemmatizer = WordNetLemmatizer()
 
     @staticmethod
@@ -310,11 +275,14 @@ class LemmatizerFeatures(object):
         if len(pos_tags) == len(window.tokens):
             # _ is the word
             for token, (_, pos_tag) in zip(window.tokens, pos_tags):
-                the_word = self.wordnet_lemmatizer.lemmatize(token.word, pos=self.convert_tag(pos_tag))
-                synonyms = wordnet.synsets(the_word)
-                lemmas = set(chain.from_iterable([word.lemma_names() for word in synonyms]))
+                if self.token_to_rank(token) != "#":
+                    the_word = self.wordnet_lemmatizer.lemmatize(token.word, pos=self.convert_tag(pos_tag))
+                    synonyms = wordnet.synsets(the_word, pos=self.convert_tag(pos_tag))
+                    lemmas = set(chain.from_iterable([word.lemma_names() for word in synonyms]))
+                else:
+                    lemmas = ["#"]
 
-                result.append(["lm={0}".format(lemma) for lemma in lemmas])
+                result.append(["lm={0}".format("".join(lemmas))])
         else:
             orig_str = "|".join([token.word for token in window.tokens])
             pos_str = "|".join([word for word, _ in pos_tags])
@@ -329,6 +297,16 @@ class LemmatizerFeatures(object):
                 result.append([])
         # print("done")
         return result
+
+    def token_to_rank(self, token):
+        """Converts a token/word to its unigram rank.
+        Args:
+            token: The token/word to convert.
+        Returns:
+            Unigram rank as integer,
+            or -1 if it wasn't found among the unigrams.
+        """
+        return self.unigrams.get_rank_of(token.word, '#')
 
     def stanford_pos_tag(self, window):
         """Converts a Window (list of tokens) to their POS tags.
@@ -757,7 +735,7 @@ class UnigramFeature(object):
             Unigram rank as integer,
             or -1 if it wasn't found among the unigrams.
         """
-        return self.unigrams.get_rank_of(token.word, -1)
+        return self.unigrams.get_rank_of(token.word, "#")
 
 
 class BigramFeature(object):
@@ -789,15 +767,25 @@ class BigramFeature(object):
         right_token = None
 
         for i in range(len(window.tokens)):
-            word1 = window.tokens[i].word
+            word1 = self.token_to_rank(window.tokens[i])
             if i < len(window.tokens) - 1:
-                word2 = window.tokens[i + 1].word
+                word2 = self.token_to_rank(window.tokens[i + 1])
             else:
                 word2 = '#'
             result.append(["bg={0}{1}".format(word1, word2)])
 
         # print("done")
         return result
+
+    def token_to_rank(self, token):
+        """Converts a token/word to its unigram rank.
+        Args:
+            token: The token/word to convert.
+        Returns:
+            Unigram rank as integer,
+            or -1 if it wasn't found among the unigrams.
+        """
+        return self.unigrams.get_rank_of(token.word, "#")
 
 
 class PrefixFeature(object):
