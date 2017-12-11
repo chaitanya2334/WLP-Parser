@@ -42,7 +42,9 @@ class MultiBatchSeqNet(nn.Module):
             self.emb_lookup.weight = nn.Parameter(cuda.FloatTensor(emb_mat))
 
         elif cfg.TRAIN_WORD_EMB == "pre_only":
-            self.emb_lookup = Embedding(self.emb_mat_tensor)
+            self.emb_lookup = nn.Embedding(self.vocab_size, self.emb_dim)
+            self.emb_lookup.weight = nn.Parameter(cuda.FloatTensor(emb_mat))
+            self.emb_lookup.weight.requires_grad = False
 
         elif cfg.TRAIN_WORD_EMB == "random":
             self.emb_lookup = nn.Embedding(self.vocab_size, self.emb_dim)
