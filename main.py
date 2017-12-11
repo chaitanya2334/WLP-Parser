@@ -83,7 +83,7 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
         pred = argmax(seq_out)
 
         logger.debug("Predicted output {0}".format(pred))
-        seq_loss = seq_criterion(seq_out, Variable(torch.LongTensor(y_var)).cuda())
+        seq_loss = seq_criterion(seq_out, Variable(torch.LongTensor(y_var)).cuda())/batch_size
 
         # to limit the vocab size of the sample sentence ( trick used to improve lm model)
         # TODO make sure that start and end symbol of sentence gets through this filtering.
@@ -177,9 +177,9 @@ def build_model(train_dataset, dev_dataset, test_dataset,
     model.zero_grad()
 
     # init loss criteria
-    seq_criterion = nn.NLLLoss()
-    lm_f_criterion = nn.NLLLoss()
-    lm_b_criterion = nn.NLLLoss()
+    seq_criterion = nn.NLLLoss(size_average=False)
+    lm_f_criterion = nn.NLLLoss(size_average=False)
+    lm_b_criterion = nn.NLLLoss(size_average=False)
     att_loss = nn.CosineEmbeddingLoss(margin=1)
     best_res_val_0 = 0.0
     best_res_val_1 = 0.0
