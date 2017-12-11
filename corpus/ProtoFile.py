@@ -14,6 +14,7 @@ import io
 import logging
 from builtins import any as b_any
 
+from preprocessing.feature_engineering.GeniaTagger import GeniaTagger
 from preprocessing.feature_engineering.pos import PosTagger
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ Link = namedtuple("Link", "l_id, l_name, arg1, arg2")
 # list of sentences, where each sentence is a list of words : [[word1, word2, word3,...], [word1, word2...]]
 
 class ProtoFile:
-    def __init__(self, filename, gen_features=False, to_filter=False):
+    def __init__(self, filename, genia=None, gen_features=False, to_filter=False):
         self.filename = filename
         self.basename = os.path.basename(filename)
         self.protocol_name = self.basename
@@ -55,7 +56,10 @@ class ProtoFile:
             self.tag_0_name = 'O'
             self.tokens2d = self.gen_tokens(labels_allowed=cfg.LABELS)
             if gen_features:
-                self.pos_tags = self.__gen_pos_stanford()
+                if genia:
+                    self.pos_tags = self.__gen_pos_genia(genia)
+                else:
+                    self.pos_tags = self.__gen_pos_stanford()
                 self.conll_deps = self.__gen_dep()
 
             if to_filter:
@@ -103,6 +107,17 @@ class ProtoFile:
             pickle.dump(conll_deps, open(d_cache, 'wb'))
 
         return conll_deps
+
+    def __gen_pos_genia(self, pos_tagger):
+
+        p_cache = os.path.join(cfg.POS_GENIA_DIR, self.protocol_name + '.p')
+        try:
+            pos_tags = pickle.load(open(p_cache, 'rb'))
+        except (pickle.UnpicklingError, EOFError, FileNotFoundError):
+            pos_tags = pos_tagger.parse_through_file([" ".join(sent) for sent in self.sents])
+
+            pickle.dump(pos_tags, open(p_cache, 'wb'))
+        return pos_tags
 
     def __gen_pos_stanford(self):
         pos = PosTagger(feat_cfg.STANFORD_POS_JAR_FILEPATH, feat_cfg.STANFORD_MODEL_FILEPATH,

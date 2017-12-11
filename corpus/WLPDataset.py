@@ -38,6 +38,7 @@ import numpy as np
 # TODO fix corpus folder's structure and then improve this class
 from corpus.TextFile import TextFile
 from preprocessing.text_processing import gen_list2id_dict
+import pprint
 
 Data = namedtuple('Data', ['SENT', 'X', 'C', 'Y', 'P', 'POS', 'REL', 'DEP'])
 
@@ -164,8 +165,8 @@ class WLPDataset(object):
         self.word_counts = OrderedDict()
         self.char_index = dict()
         self.min_wcount = min_wcount
-
-        self.protocols = self.read_protocols(gen_features=True, dir_path=cfg.ARTICLES_FOLDERPATH)
+        # genia = GeniaTagger(feat_cfg.GENIA_TAGGER_FILEPATH)
+        self.protocols = self.read_protocols(genia=None, gen_features=True, dir_path=cfg.ARTICLES_FOLDERPATH)
 
         self.tag_idx = self.make_bio_dict(cfg.LABELS)
         self.tokens2d, self.pnos = self.__gen_data(replace_digit=cfg.REPLACE_DIGITS)
@@ -381,21 +382,17 @@ class WLPDataset(object):
 
         # numbers to a single representation
         dep_words = [re.sub(r'\d', '0', word) for word in dep_words]
-        f_dep = [self.word_index[word] for word in dep_words]
+        for word in dep_words:
+            try:
+                f_dep.append(self.word_index[word])
+            except KeyError:
+                f_dep.append(self.word_index[cfg.UNK])
 
         print(tabulate(mega_df[:10], headers='keys', tablefmt='psql'))
         enc = OneHotEncoder()
         enc.fit(mega_df.as_matrix())
 
         return enc, mega_df, cut_list, f_dep
-
-    @staticmethod
-    def __gen_pos_genia(sents):
-        pos_tagger = GeniaTagger(feat_cfg.GENIA_TAGGER_FILEPATH)
-
-        res = pos_tagger.parse_through_file([" ".join(sent) for sent in sents])
-        print("Done Genia Tagger")
-        return res
 
     def __gen_single_feature(self, tokens1d, pno, pos, dep):
         window = Window(tokens1d, pno, pos, dep)
@@ -413,7 +410,7 @@ class WLPDataset(object):
         filenames = self.__from_dir(dir_path, extension="ann")
         return filenames
 
-    def read_protocols(self, gen_features, dir_path=None, filenames=None):
+    def read_protocols(self, gen_features, genia=None, dir_path=None, filenames=None):
         if dir_path is None and filenames is None:
             raise ValueError("Both dir path and filenames are None")
 
@@ -421,7 +418,8 @@ class WLPDataset(object):
             filenames = self.__from_dir(dir_path, extension="ann")
         if cfg.FILTER_ALL_NEG:
             print("FILTERING BAD SENTENCES")
-        articles = [ProtoFile(filename, gen_features, to_filter=cfg.FILTER_ALL_NEG) for filename in tqdm(filenames)]
+        articles = [ProtoFile(filename, genia, gen_features, to_filter=cfg.FILTER_ALL_NEG)
+                    for filename in tqdm(filenames)]
 
         # remove articles that are empty
         articles = [article for article in articles if article.status]
@@ -429,6 +427,58 @@ class WLPDataset(object):
         print("\nloaded {0} articles".format(len(articles)))
 
         return articles
+
+    def pos_table(self, label, pos_tags_allowed):
+        counter = dict()
+        c = 0
+        for p in self.protocols:
+            tokens = list(itertools.chain.from_iterable(p.tokens2d))  # convert 2d list of tokens into 1d
+            pos_tags = list(itertools.chain.from_iterable(p.pos_tags))
+            for pos_tag, token in zip(pos_tags, tokens):
+                if token.label in label:
+                    c += 1
+                    tag = pos_tag[1] if pos_tag[1] in pos_tags_allowed else 'OTHER'
+                    if tag in counter:
+                        if token.word in counter[tag]:
+                            counter[tag][token.word] += 1
+                        else:
+                            counter[tag][token.word] = 1
+                    else:
+                        counter[tag] = {token.word: 1}
+
+        sorted_counter = dict()
+        total_counter = dict()
+        for k, v in counter.items():
+            sorted_counter[k] = OrderedDict(sorted(v.items(), key=lambda kv: kv[1], reverse=True))
+            total_counter[k] = sum(v.values())
+        pp = pprint.PrettyPrinter(indent=4)
+
+        pp.pprint(sorted_counter)
+        pp.pprint(total_counter)
+        print("total: {}".format(c))
+
+    def ent_table(self):
+        counter = dict()
+        for p in self.protocols:
+            for tag in p.tags:
+                words = " ".join(tag.words)
+                if tag.tag_name in counter:
+                    if words in counter[tag.tag_name]:
+                        counter[tag.tag_name][words] += 1
+                    else:
+                        counter[tag.tag_name][words] = 1
+                else:
+                    counter[tag.tag_name] = {words: 1}
+
+        sorted_counter = dict()
+        total_counter = dict()
+        for k, v in counter.items():
+            sorted_counter[k] = OrderedDict(sorted(v.items(), key=lambda kv: kv[1], reverse=True))
+            total_counter[k] = sum(v.values())
+        pp = pprint.PrettyPrinter(indent=4)
+
+        pp.pprint(sorted_counter)
+        pp.pprint(total_counter)
 
     def size(self, to_filter=False):
         tokens2d, pno = self.__load_sents_and_labels(self.protocols, with_bio=True)
