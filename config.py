@@ -31,6 +31,7 @@ NEG_LABEL = 'O'
 
 CATEGORIES = None
 
+OOP_FILEPATH = os.path.join(CURRENT_DIR, "preprocessing/oop.txt")
 OOV_FILEPATH = os.path.join(CURRENT_DIR, "preprocessing/oov.txt")
 
 MODEL_SAVE_DIR = os.path.join(CURRENT_DIR, "results/models")
@@ -53,7 +54,7 @@ WORD_VOCAB = 0
 
 LM_GAMMA = 0.1
 
-REPLACE_DIGITS = False
+REPLACE_DIGITS = True
 
 PUBMED_VOCAB_FILE = os.path.join(CURRENT_DIR, "preprocessing/pubmed_vocab.txt")
 
@@ -75,6 +76,7 @@ WORD_END = "</w>"
 SENT_START = "<s>"
 SENT_END = "</s>"
 
+LOWERCASE = True
 UNK = "<unk>"
 MIN_WORD_COUNT = 1  # minimum word count for it to be part of vocabulary
 

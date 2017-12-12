@@ -46,13 +46,17 @@ logger = logging.getLogger(__name__)
 
 
 class CustomDataset(data.Dataset):
-    def __init__(self, protocols, char_index, word_index, pos_ids, tag_idx):
+    def __init__(self, protocols, char_index, word_index, pos_ids, tag_idx, is_oov):
         self.protocols = protocols
         self.char_index = char_index
         self.word_index = word_index
         self.pos_index = pos_ids
         self.tag_idx = tag_idx
         self.collection = self.boil_protocols()
+        self.is_oov = is_oov
+        self.words = list(
+            itertools.chain.from_iterable([[word for word in sent] for sent, _, _, _ in self.collection]))
+        self.vocab = set(self.words)
 
     def boil_protocols(self):
         # combines all prtocol data to generate a list [(sent, label, f), ..]
@@ -90,24 +94,22 @@ class CustomDataset(data.Dataset):
 
     def __gen_sent_idx_seq(self, sent):
         cfg.ver_print("word_index", self.word_index)
-        sent_idx_seq = self.__to_idx_seq(sent, start=cfg.SENT_START, end=cfg.SENT_END, index=self.word_index)
+        sent_idx_seq = self.__to_idx_seq(sent, start=cfg.SENT_START, end=cfg.SENT_END,
+                                         index=self.word_index, oov=self.is_oov)
         cfg.ver_print("sent", sent)
         cfg.ver_print("sent idx seq", sent_idx_seq)
 
         return sent_idx_seq
 
     @staticmethod
-    def __to_idx_seq(list1d, start, end, index, lowercase=False):
+    def __to_idx_seq(list1d, start, end, index, oov=None):
         row_idx_seq = [index[start]]
-        for item in list1d:
-            if lowercase:
-                item = item.lower()
 
-            try:
-                row_idx_seq.append(index[item])
-            except KeyError:
-                # print("bad characters/Word: {0}".format(item))
+        for item in list1d:
+            if oov and oov[index[item]] == 1:
                 row_idx_seq.append(index[cfg.UNK])
+            else:
+                row_idx_seq.append(index[item])
 
         row_idx_seq.append(index[end])
 
@@ -117,7 +119,7 @@ class CustomDataset(data.Dataset):
         cfg.ver_print("char_index", self.char_index)
         char_idx_seq = [self.__to_idx_seq([cfg.SENT_START], start=cfg.WORD_START, end=cfg.WORD_END,
                                           index=self.char_index)] + \
-                       [self.__to_idx_seq(list(word), lowercase=True, start=cfg.WORD_START, end=cfg.WORD_END,
+                       [self.__to_idx_seq(list(word), start=cfg.WORD_START, end=cfg.WORD_END,
                                           index=self.char_index)
                         for word in sent] + \
                        [self.__to_idx_seq([cfg.SENT_END], start=cfg.WORD_START, end=cfg.WORD_END,
@@ -152,8 +154,10 @@ class CustomDataset(data.Dataset):
 
 
 class WLPDataset(object):
-    def __init__(self, gen_feat=False, min_wcount=1, shuffle_once=True):
+    def __init__(self, gen_feat=False, min_wcount=1, shuffle_once=True, lowercase=False, replace_digits=False):
 
+        self.lowercase = lowercase
+        self.replace_digits = replace_digits
         self.word_index = dict()
         self.word_counts = OrderedDict()
         self.char_index = dict()
@@ -170,8 +174,8 @@ class WLPDataset(object):
         self.train = None
         self.dev = None
         self.test = None
-        self.is_oov = dict()
         self.embedding_matrix = self.prepare_embeddings()
+        self.is_oov = dict()
 
         if gen_feat:
             print("Collecting all the Features...")
@@ -180,6 +184,27 @@ class WLPDataset(object):
                 "Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
 
             self.enc, self.f_df = self.__gen_all_features(do_dep=False)
+
+    def find_oov(self):
+        is_oov = dict()
+        print("Train vocab size:{0}\nDev vocab size:{1}\nTest vocab size:{2}".format(
+            len(self.train.vocab), len(self.dev.vocab), len(self.test.vocab)))
+
+        with open(cfg.OOV_FILEPATH, 'w') as f:
+            f.write("Out of pre-trained Vocabulary words\n")
+
+        with open(cfg.OOV_FILEPATH, 'a') as f:
+            for word, idx in self.word_index.items():
+                if word in self.train.vocab:
+                    is_oov[idx] = 0
+                else:
+                    is_oov[idx] = 1
+                    f.write('{0}\n'.format(word))
+
+        return is_oov
+
+    def count_oov(self, words):
+        return sum([1 for word in words if self.is_oov[self.word_index[word]] == 1])
 
     def gen_word_index(self, sents, support_start_stop):
         """Updates internal vocabulary based on a list of texts.
@@ -225,6 +250,7 @@ class WLPDataset(object):
         print("Preparing Embeddings ...")
         # get all the sentences each sentence is a sequence of words (list of words)
         tokens2d = list(itertools.chain.from_iterable([p.tokens2d for p in self.protocols]))
+
         sents = [[token.word for token in tokens1d] for tokens1d in tokens2d]
         # train a skip gram model to generate word vectors. Vectors will be of dimension given by 'size' parameter.
         print("         Loading Word2Vec ...")
@@ -243,7 +269,7 @@ class WLPDataset(object):
 
         self.word_index = self.gen_word_index(sents, support_start_stop)
 
-        self.char_index = gen_list2id_dict(list_of_chars, lowercase=True, insert_words=['<w>', '</w>', '<s>', '</s>'])
+        self.char_index = gen_list2id_dict(list_of_chars, insert_words=['<w>', '</w>', '<s>', '</s>'])
 
         print(self.char_index)
 
@@ -257,21 +283,18 @@ class WLPDataset(object):
 
         embedding_matrix = np.random.uniform(low=-0.01, high=0.01, size=(len(self.word_index) + 1, cfg.EMBEDDING_DIM))
         print("         Populating Embedding Matrix ...")
-        with open(cfg.OOV_FILEPATH, 'w') as f:
-            f.write("Out of Vocabulary words\n")
+        with open(cfg.OOP_FILEPATH, 'w') as f:
+            f.write("Out of pre-trained Vocabulary words\n")
 
         for word, i in self.word_index.items():
             try:
                 embedding_vector = skip_gram_model[word]
                 embedding_matrix[i] = embedding_vector
-                self.is_oov[i] = 0
             except KeyError:
                 # not found in pre-trained word embedding list.
-                # cfg.UNK will also have is_oov = 1
-                self.is_oov[i] = 1
-                with open(cfg.OOV_FILEPATH, 'a') as f:
+                with open(cfg.OOP_FILEPATH, 'a') as f:
                     f.write('{0}\n'.format(word))
-                cfg.ver_print('out of vocabulary word', word)
+                cfg.ver_print('out of pre-trained vocab word', word)
 
         return embedding_matrix
 
@@ -297,11 +320,11 @@ class WLPDataset(object):
         print(ntrain_cut)
 
         self.train = CustomDataset(self.protocols[0:ntrain_cut], self.char_index, self.word_index, self.pos_ids,
-                                   self.tag_idx)
+                                   self.tag_idx, self.is_oov)
         self.dev = CustomDataset(self.protocols[ntrain:ndev], self.char_index, self.word_index, self.pos_ids,
-                                 self.tag_idx)
+                                 self.tag_idx, self.is_oov)
         self.test = CustomDataset(self.protocols[ndev:ntest], self.char_index, self.word_index, self.pos_ids,
-                                  self.tag_idx)
+                                  self.tag_idx, self.is_oov)
 
         print("train: \n\tno. of protocols = {0} \n\tno. of sents = {1}".format(
             len(self.train.protocols), len(self.train)))
@@ -309,6 +332,10 @@ class WLPDataset(object):
             len(self.dev.protocols), len(self.dev)))
         print("test: \n\tno. of protocols = {0} \n\tno. of sents = {1}".format(
             len(self.test.protocols), len(self.test)))
+
+        self.is_oov = self.find_oov()
+        print("out of vocab words in dev set: {0}".format(self.count_oov(self.dev.vocab)))
+        print("out of vocab words in test set: {0}".format(self.count_oov(self.test.vocab)))
 
     @staticmethod
     def __get_missing(tokens2d, pos_tags):
@@ -427,7 +454,7 @@ class WLPDataset(object):
             filenames = self.__from_dir(dir_path, extension="ann")
         if cfg.FILTER_ALL_NEG:
             print("FILTERING BAD SENTENCES")
-        articles = [ProtoFile(filename, genia, gen_features, to_filter=cfg.FILTER_ALL_NEG)
+        articles = [ProtoFile(filename, genia, gen_features, self.lowercase, self.replace_digits, cfg.FILTER_ALL_NEG)
                     for filename in tqdm(filenames)]
 
         # remove articles that are empty
@@ -496,21 +523,6 @@ class WLPDataset(object):
 
         return len(tokens2d)
 
-    def __gen_data(self, replace_digit):
-
-        # get list of list of words
-        tokens2d, pno = self.__load_sents_and_labels(self.protocols, with_bio=True)
-
-        logger.debug("labels {0}".format(tokens2d))
-
-        if replace_digit:
-            print("REPLACING DIGITS")
-            tokens2d = self.replace_num(tokens2d)
-
-        # convert list of list of words to list of list of word_indices
-
-        return tokens2d, pno
-
     @staticmethod
     def split(seq, per):
         assert sum(per) == 100
@@ -554,19 +566,6 @@ class WLPDataset(object):
     @staticmethod
     def __collate(batch):
         return batch
-
-    @staticmethod
-    def __replace_num(tokens1d):
-        new_tokens1d = [Token(re.sub(r'\d', '0', token.word), token.label) for token in tokens1d]
-        return new_tokens1d
-
-    def replace_num(self, tokens2d):
-        new_tokens2d = []
-        for tokens1d in tokens2d:
-            new_tokens1d = self.__replace_num(tokens1d)
-
-            new_tokens2d.append(new_tokens1d)
-        return new_tokens2d
 
     # using a word_index dictionary, converts words to their respective index.
     # sents has to be a list of list of words.
@@ -615,7 +614,7 @@ class WLPDataset(object):
         return [TextFile(filename) for filename in self.__from_dir(folder, "txt")]
 
     @staticmethod
-    def load_tokenized_sents(articles, to_lowercase=True):
+    def load_tokenized_sents(articles):
         ret = []
         for article in articles:
             if article.status:

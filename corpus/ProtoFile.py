@@ -13,6 +13,7 @@ import features_config as feat_cfg
 import io
 import logging
 from builtins import any as b_any
+import re
 
 from preprocessing.feature_engineering.GeniaTagger import GeniaTagger
 from preprocessing.feature_engineering.pos import PosTagger
@@ -28,7 +29,7 @@ Link = namedtuple("Link", "l_id, l_name, arg1, arg2")
 # list of sentences, where each sentence is a list of words : [[word1, word2, word3,...], [word1, word2...]]
 
 class ProtoFile:
-    def __init__(self, filename, genia=None, gen_features=False, to_filter=False):
+    def __init__(self, filename, genia, gen_features, lowercase, replace_digits, to_filter):
         self.filename = filename
         self.basename = os.path.basename(filename)
         self.protocol_name = self.basename
@@ -55,7 +56,7 @@ class ProtoFile:
             self.__parse_links()
             self.tag_0_id = 'T0'
             self.tag_0_name = 'O'
-            self.tokens2d = self.gen_tokens(labels_allowed=cfg.LABELS)
+            self.tokens2d = self.gen_tokens(labels_allowed=cfg.LABELS, lowercase=lowercase, replace_digits=replace_digits)
             self.tokens2d = [[self.clean_html_tag(token) for token in token1d] for token1d in self.tokens2d]
             self.word_cnt = sum(len(tokens1d) for tokens1d in self.tokens2d)
             self.f_df = None
@@ -334,7 +335,7 @@ class ProtoFile:
         logging.debug("Protocol={0}: No tag found with start == {1}".format(self.protocol_name, start))
         return None
 
-    def gen_tokens(self, labels_allowed=None):
+    def gen_tokens(self, labels_allowed=None, lowercase=False, replace_digits=False):
         # for a list of list of words returns a list of list of tokens
         # [[Token(word, label), Token(word, label)], [Token(word, label), Token(word, label)]]
         # BIO encoding
@@ -370,7 +371,8 @@ class ProtoFile:
                     start += len(word)
                     wi += 1
 
-            tokens = [Token(word, label) for word, label in word_label_pairs]
+            tokens = [Token(word, label, lowercase=lowercase, replace_digits=replace_digits) for word, label in
+                      word_label_pairs]
 
             ret.append(tokens)
 
@@ -413,7 +415,7 @@ class Token(object):
             (See Window.apply_features().)
     """
 
-    def __init__(self, word, label=cfg.NO_NE_LABEL):
+    def __init__(self, word, label=cfg.NO_NE_LABEL, lowercase=False, replace_digits=False):
         """Initialize a new Token object.
         Args:
             original: The original word as found in the text document, including the label,
@@ -422,7 +424,15 @@ class Token(object):
         # self.original = original
 
         self.word = word
+
+        if lowercase:
+            self.word = self.word.lower()
+
+        if replace_digits:
+            self.word = re.sub(r'\d', '0', self.word)
+
         self.label = label
+        self.original = word
         # self._word_ascii = None
         self.feature_values = None
 

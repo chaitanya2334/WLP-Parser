@@ -306,7 +306,8 @@ def dataset_prep(loadfile=None, savefile=None):
         corpus.gen_data(cfg.PER)
     else:
         print("Loading Data ...")
-        corpus = WLPDataset(gen_feat=True, min_wcount=cfg.MIN_WORD_COUNT)
+        corpus = WLPDataset(gen_feat=True, min_wcount=cfg.MIN_WORD_COUNT,
+                            lowercase=cfg.LOWERCASE, replace_digits=cfg.REPLACE_DIGITS)
         corpus.gen_data(cfg.PER)
 
         if savefile:
@@ -380,7 +381,7 @@ def single_run(corpus, index, title, overwrite, only_test=False):
     test_eval.write_csv_results(csv_res_file, title + "g={0}".format(cfg.LM_GAMMA), overwrite)
 
     test_loader = DataLoader(corpus.test, batch_size=cfg.BATCH_SIZE, num_workers=28, collate_fn=collate_fn)
-    sents = [(sent, p) for SENT, X, C, POS, REL, Y, P in test_loader for sent, p in zip(SENT, P)]
+    sents = [(sent, p) for SENT, X, C, POS, Y, P in test_loader for sent, p in zip(SENT, P)]
     bratfile_full.from_labels(sents, true_list, pred_list, doFull=True)
     bratfile_inc.from_labels(sents, true_list, pred_list, doFull=False)
 

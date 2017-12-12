@@ -9,14 +9,12 @@ import itertools
 import collections
 
 
-def gen_list2id_dict(list_, min_freq=-1, insert_words=None, lowercase=False, replace_digits=False):
+def gen_list2id_dict(list_, min_freq=-1, insert_words=None, replace_digits=False):
     """
     Iterates over texts and creates a word2id mapping.
     """
     counter = collections.Counter()
     for item in list_:
-        if lowercase:
-            item = item.lower()
         if replace_digits:
             item = re.sub(r'\d', '0', item)
         counter.update(item.strip().split())
