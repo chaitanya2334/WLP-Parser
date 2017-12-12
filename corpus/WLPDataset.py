@@ -55,7 +55,7 @@ class CustomDataset(data.Dataset):
         self.collection = self.boil_protocols()
         self.is_oov = is_oov
         self.words = list(
-            itertools.chain.from_iterable([[word for word in sent] for sent, _, _, _ in self.collection]))
+            itertools.chain.from_iterable([[word for word in sent] for _, sent, _, _, _ in self.collection]))
         self.vocab = set(self.words)
 
     def boil_protocols(self):

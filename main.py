@@ -410,12 +410,6 @@ def build_cmd_parser():
     parser.add_argument('--pos', required=True, choices=["No", "Yes"],
                         help='The feature level to be added on top of the bi LSTM.')
 
-    parser.add_argument('--dep_label', required=True, choices=["No", "Yes"],
-                        help='Whether or not to include dependency labels embedding')
-
-    parser.add_argument('--dep_word', required=True, choices=["No", "Yes"],
-                        help="whether or not to include dependency word embedding")
-
     parser.add_argument("filename", metavar="String",
                         help="This is the filename (without ext) "
                              "that will be given to the file where all the results will be stored ")
@@ -447,8 +441,8 @@ def main(nrun=1):
     cfg.TRAIN_WORD_EMB = args.train_word_emb
     cfg.CHAR_LEVEL = args.char_level
     cfg.POS_FEATURE = args.pos
-    cfg.DEP_LABEL_FEATURE = args.dep_label
-    cfg.DEP_WORD_FEATURE = args.dep_word
+    cfg.DEP_LABEL_FEATURE = "No"
+    cfg.DEP_WORD_FEATURE = "No"
     cfg.LM_GAMMA = args.lm_gamma
     for run in range(nrun):
         dataset = dataset_prep(loadfile=cfg.DB)
