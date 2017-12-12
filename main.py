@@ -68,7 +68,7 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
             unrolled_x_var = list(chain.from_iterable(x_var))
 
             not_oov_seq = [-1 if is_oov[idx] else 1 for idx in unrolled_x_var]
-            char_att_loss = att_loss(emb.detach(), char_emb, Variable(torch.cuda.LongTensor(not_oov_seq)))
+            char_att_loss = att_loss(emb.detach(), char_emb, Variable(torch.cuda.LongTensor(not_oov_seq))) / batch_size
 
         else:
             lm_f_out, lm_b_out, seq_out, seq_lengths = model(x_var, c_var, pos_var)
@@ -93,8 +93,8 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
             lm_X_b = [x1d[:-1] for x1d in lm_X]
             lm_X_f = list(chain.from_iterable(lm_X_f))
             lm_X_b = list(chain.from_iterable(lm_X_b))
-            lm_f_loss = lm_f_criterion(lm_f_out.squeeze(), Variable(cuda.LongTensor(lm_X_f)).squeeze())
-            lm_b_loss = lm_b_criterion(lm_b_out.squeeze(), Variable(cuda.LongTensor(lm_X_b)).squeeze())
+            lm_f_loss = lm_f_criterion(lm_f_out.squeeze(), Variable(cuda.LongTensor(lm_X_f)).squeeze()) / batch_size
+            lm_b_loss = lm_b_criterion(lm_b_out.squeeze(), Variable(cuda.LongTensor(lm_X_b)).squeeze()) / batch_size
 
             if cfg.CHAR_LEVEL == "Attention":
                 total_loss = seq_loss + Variable(cuda.FloatTensor([gamma])) * (lm_f_loss + lm_b_loss) + char_att_loss
