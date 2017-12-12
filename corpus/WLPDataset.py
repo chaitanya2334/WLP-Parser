@@ -66,15 +66,16 @@ class CustomDataset(data.Dataset):
             pno = p.protocol_name
             for token1d in p.tokens2d:
                 sent = [token.word for token in token1d]
+                org_sent = [token.original for token in token1d]
                 labels = [token.label for token in token1d]
                 f = p.f_df[i:i + len(token1d)]
                 i += len(token1d)
-                collection.append((sent, labels, f, pno))
+                collection.append((org_sent, sent, labels, f, pno))
 
         return collection
 
     def __getitem__(self, item):
-        sent, labels, f, pno = self.collection[item]
+        org_sent, sent, labels, f, pno = self.collection[item]
         x = self.__gen_sent_idx_seq(sent)
         c = self.__prep_char_idx_seq(sent)
         y = [self.tag_idx['<s>']] + [self.tag_idx[label] for label in labels] + [self.tag_idx['</s>']]
@@ -87,7 +88,7 @@ class CustomDataset(data.Dataset):
 
         assert len(x) == len(f) + 2, (len(x), len(f), pno)
         assert len(x) == len(f_pos)
-        return Data(sent, x, c, y, pno, f_pos)
+        return Data(org_sent, x, c, y, pno, f_pos)
 
     def __len__(self):
         return len(self.collection)
