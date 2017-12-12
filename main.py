@@ -59,7 +59,7 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
         model.zero_grad()
         model.init_state(len(X))
 
-        x_var, c_var, pos_var, y_var, lm_X = to_variables(X, C, POS, Y)
+        x_var, c_var, pos_var, y_var, lm_X = to_variables(X=X, C=C, POS=POS, Y=Y)
 
         np.set_printoptions(threshold=np.nan)
 

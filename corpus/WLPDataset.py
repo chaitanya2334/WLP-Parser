@@ -158,8 +158,9 @@ class WLPDataset(object):
         self.word_counts = OrderedDict()
         self.char_index = dict()
         self.min_wcount = min_wcount
-        # genia = GeniaTagger(feat_cfg.GENIA_TAGGER_FILEPATH)
-        self.protocols = self.read_protocols(genia=None, gen_features=True, dir_path=cfg.ARTICLES_FOLDERPATH)
+        genia = GeniaTagger(feat_cfg.GENIA_TAGGER_FILEPATH)
+        print("Using GENIA POS TAGGER")
+        self.protocols = self.read_protocols(genia=genia, gen_features=True, dir_path=cfg.ARTICLES_FOLDERPATH)
 
         self.tag_idx = self.make_bio_dict(cfg.LABELS)
         # self.tokens2d, self.pnos = self.__gen_data(replace_digit=cfg.REPLACE_DIGITS)

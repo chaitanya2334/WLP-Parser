@@ -16,6 +16,7 @@ from builtins import any as b_any
 
 from preprocessing.feature_engineering.GeniaTagger import GeniaTagger
 from preprocessing.feature_engineering.pos import PosTagger
+import html
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class ProtoFile:
             self.tag_0_id = 'T0'
             self.tag_0_name = 'O'
             self.tokens2d = self.gen_tokens(labels_allowed=cfg.LABELS)
+            self.tokens2d = [[self.clean_html_tag(token) for token in token1d] for token1d in self.tokens2d]
             self.word_cnt = sum(len(tokens1d) for tokens1d in self.tokens2d)
             self.f_df = None
             if gen_features:
@@ -66,6 +68,11 @@ class ProtoFile:
 
             if to_filter:
                 self.filter()
+
+    @staticmethod
+    def clean_html_tag(token):
+        token.word = html.unescape(token.word)
+        return token
 
     def filter(self):
         # tokens2d, pos_tags, and conll_deps are filtered if a sentence was not tagged
@@ -111,7 +118,6 @@ class ProtoFile:
         return conll_deps
 
     def __gen_pos_genia(self, pos_tagger):
-
         p_cache = os.path.join(cfg.POS_GENIA_DIR, self.protocol_name + '.p')
         try:
             pos_tags = pickle.load(open(p_cache, 'rb'))
