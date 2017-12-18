@@ -18,6 +18,7 @@ from corpus.BratWriter import BratFile, Writer
 from corpus.WLPDataset import WLPDataset
 import config as cfg
 from model.SeqNet import SeqNet
+from model.multi_batch.BiLSTM_CRF import BiLSTM_CRF
 from model.multi_batch.MultiBatchSeqNet import MultiBatchSeqNet
 from model.utils import to_scalar
 from postprocessing.evaluator import Evaluator
@@ -41,89 +42,22 @@ def argmax(var):
     return preds
 
 
-def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, lm_f_criterion, lm_b_criterion,
-                  att_loss,
-                  gamma):
+def train_a_epoch(name, data, tag_idx, model, optimizer):
     evaluator = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
     t = tqdm(data, total=len(data))
 
-    if is_oov[0] == 1:
-        print("Yes, UNKNOWN token is out of vocab")
-    else:
-        print("No, UNKNOWN token is not out of vocab")
-
-    for SENT, X, C, POS, Y, P in t:
-        batch_size = len(SENT)
+    for SENT, X, Y, P in t:
         # zero the parameter gradients
         optimizer.zero_grad()
         model.zero_grad()
-        model.init_state(len(X))
-
-        x_var, c_var, pos_var, y_var, lm_X = to_variables(X=X, C=C, POS=POS, Y=Y)
-
         np.set_printoptions(threshold=np.nan)
-
-        if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, seq_lengths, emb, char_emb = model(x_var, c_var, pos_var)
-            unrolled_x_var = list(chain.from_iterable(x_var))
-
-            not_oov_seq = [-1 if is_oov[idx] else 1 for idx in unrolled_x_var]
-            char_att_loss = att_loss(emb.detach(), char_emb, Variable(torch.cuda.LongTensor(not_oov_seq))) / batch_size
-
-        else:
-            lm_f_out, lm_b_out, seq_out, seq_lengths = model(x_var, c_var, pos_var)
-
-        logger.debug("lm_f_out : {0}".format(lm_f_out))
-        logger.debug("lm_b_out : {0}".format(lm_b_out))
-        logger.debug("seq_out : {0}".format(seq_out))
-
-        logger.debug("tensor X variable: {0}".format(x_var))
-
-        # remove start and stop tags
-        pred = argmax(seq_out)
-
-        logger.debug("Predicted output {0}".format(pred))
-        seq_loss = seq_criterion(seq_out, Variable(torch.LongTensor(y_var)).cuda()) / batch_size
-
-        # to limit the vocab size of the sample sentence ( trick used to improve lm model)
-        # TODO make sure that start and end symbol of sentence gets through this filtering.
-        logger.debug("Sample input {0}".format(lm_X))
-        if gamma != 0:
-            lm_X_f = [x1d[1:] for x1d in lm_X]
-            lm_X_b = [x1d[:-1] for x1d in lm_X]
-            lm_X_f = list(chain.from_iterable(lm_X_f))
-            lm_X_b = list(chain.from_iterable(lm_X_b))
-            lm_f_loss = lm_f_criterion(lm_f_out.squeeze(), Variable(cuda.LongTensor(lm_X_f)).squeeze()) / batch_size
-            lm_b_loss = lm_b_criterion(lm_b_out.squeeze(), Variable(cuda.LongTensor(lm_X_b)).squeeze()) / batch_size
-
-            if cfg.CHAR_LEVEL == "Attention":
-                total_loss = seq_loss + Variable(cuda.FloatTensor([gamma])) * (lm_f_loss + lm_b_loss) + char_att_loss
-            else:
-                total_loss = seq_loss + Variable(cuda.FloatTensor([gamma])) * (lm_f_loss + lm_b_loss)
-
-        else:
-            if cfg.CHAR_LEVEL == "Attention":
-                total_loss = seq_loss + char_att_loss
-            else:
-                total_loss = seq_loss
-
-        desc = "total_loss: {0:.4f} = seq_loss: {1:.4f}".format(to_scalar(total_loss),
-                                                                to_scalar(seq_loss))
-        if gamma != 0:
-            desc += " + gamma: {0} * (lm_f_loss: {1:.4f} + lm_b_loss: {2:.4f})".format(gamma,
-                                                                                       to_scalar(lm_f_loss),
-                                                                                       to_scalar(lm_b_loss))
-
-        if cfg.CHAR_LEVEL == "Attention":
-            desc += " + char_att_loss: {0:.4f}".format(to_scalar(char_att_loss))
-
-        t.set_description(desc)
-
-        preds = roll(pred, seq_lengths)
+        nnl = model.neg_log_likelihood(X, Y)
+        logger.debug("tensor X variable: {0}".format(X))
+        nnl.backward()
+        preds = model(X)
         for pred, x, y in zip(preds, X, Y):
-            evaluator.append_data(to_scalar(total_loss), pred, x, y)
+            evaluator.append_data(to_scalar(nnl), pred, x, y)
 
-        total_loss.backward()
         if cfg.CLIP is not None:
             clip_grad_norm(model.parameters(), cfg.CLIP)
 
@@ -132,16 +66,6 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
     evaluator.classification_report()
 
     return evaluator, model
-
-
-def roll(pred, seq_lengths):
-    # converts 1d list to 2d list
-    ret = []
-    start = 0
-    for seq_l in seq_lengths:
-        ret.append(pred[start:start + seq_l])
-        start += seq_l
-    return ret
 
 
 def plot_curve(x, y1, y2, xlabel, ylabel, title, savefile):
@@ -159,9 +83,7 @@ def plot_curve(x, y1, y2, xlabel, ylabel, title, savefile):
 def build_model(train_dataset, dev_dataset, test_dataset,
                 collate_fn, tag_idx, is_oov, embedding_matrix, model_save_path, plot_save_path):
     # init model
-    model = MultiBatchSeqNet(embedding_matrix, batch_size=cfg.BATCH_SIZE, isCrossEnt=False, char_level=cfg.CHAR_LEVEL,
-                             pos_feat=cfg.POS_FEATURE,
-                             dep_rel_feat=cfg.DEP_LABEL_FEATURE, dep_word_feat=cfg.DEP_WORD_FEATURE)
+    model = BiLSTM_CRF(embedding_matrix, tag_idx)
 
     # Turn on cuda
     model = model.cuda()
@@ -177,12 +99,7 @@ def build_model(train_dataset, dev_dataset, test_dataset,
     model.zero_grad()
 
     # init loss criteria
-    seq_criterion = nn.NLLLoss(size_average=False)
-    lm_f_criterion = nn.NLLLoss(size_average=False)
-    lm_b_criterion = nn.NLLLoss(size_average=False)
-    att_loss = nn.CosineEmbeddingLoss(margin=1)
     best_res_val_0 = 0.0
-    best_res_val_1 = 0.0
     best_epoch = 0
     dev_eval_history = []
     test_eval_history = []
@@ -195,16 +112,14 @@ def build_model(train_dataset, dev_dataset, test_dataset,
         train_loader = DataLoader(train_dataset, batch_size=cfg.BATCH_SIZE, shuffle=cfg.RANDOM_TRAIN,
                                   num_workers=28, collate_fn=collate_fn)
 
-        train_eval, model = train_a_epoch(name="train", data=train_loader, tag_idx=tag_idx, is_oov=is_oov,
-                                          model=model, optimizer=optimizer, seq_criterion=seq_criterion,
-                                          lm_f_criterion=lm_f_criterion, lm_b_criterion=lm_b_criterion,
-                                          att_loss=att_loss, gamma=cfg.LM_GAMMA)
+        train_eval, model = train_a_epoch(name="train", data=train_loader, tag_idx=tag_idx,
+                                          model=model, optimizer=optimizer)
 
         dev_loader = DataLoader(dev_dataset, batch_size=cfg.BATCH_SIZE, num_workers=28, collate_fn=collate_fn)
         test_loader = DataLoader(test_dataset, batch_size=cfg.BATCH_SIZE, num_workers=28, collate_fn=collate_fn)
 
-        dev_eval, _, _, _ = test("dev", dev_loader, tag_idx, model)
-        test_eval, _, _, _ = test("test", test_loader, tag_idx, model)
+        dev_eval, _, _ = test("dev", dev_loader, tag_idx, model)
+        test_eval, _, _ = test("test", test_loader, tag_idx, model)
 
         dev_eval.verify_results()
         test_eval.verify_results()
@@ -235,25 +150,16 @@ def build_model(train_dataset, dev_dataset, test_dataset,
 
 
 def test(name, data, tag_idx, model):
-    correct = 0
-    total = 0
     pred_list = []
     true_list = []
     full_eval = Evaluator(name, [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
     only_ents_eval = Evaluator("test_ents_only", [0, 1], skip_label=['B-Action', 'I-Action'],
                                main_label_name=cfg.POSITIVE_LABEL, label2id=tag_idx, conll_eval=True)
-    for SENT, X, C, POS, Y, P in tqdm(data, desc=name, total=len(data)):
+
+    for SENT, X, Y, P in tqdm(data, desc=name, total=len(data)):
         np.set_printoptions(threshold=np.nan)
-        model.init_state(len(X))
-        x_var, c_var, pos_var, y_var, lm_X = to_variables(X=X, C=C, POS=POS, Y=Y)
+        preds = model(X)
 
-        if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, seq_lengths, emb, char_emb = model(x_var, c_var, pos_var)
-        else:
-            lm_f_out, lm_b_out, seq_out, seq_lengths = model(x_var, c_var, pos_var)
-
-        pred = argmax(seq_out)
-        preds = roll(pred, seq_lengths)
         for pred, x, y in zip(preds, X, Y):
             full_eval.append_data(0, pred, x, y)
             only_ents_eval.append_data(0, pred, x, y)
@@ -263,38 +169,7 @@ def test(name, data, tag_idx, model):
     full_eval.classification_report()
     only_ents_eval.classification_report()
 
-    return full_eval, only_ents_eval, pred_list, true_list
-
-
-# pred and true are lists of numpy arrays. each numpy array represents a sample
-def fscore(pred, true):
-    assert len(pred) == len(true)
-    tp, tn, fn, fp = (0,) * 4
-
-    for p_np, t_np in zip(pred, true):
-        p_l, t_l = p_np.tolist(), t_np.tolist()
-
-        for p, t in zip(p_l, t_l):
-            if p == t == 0:
-                tn += 1
-
-            elif p == t == 1:
-                tp += 1
-
-            elif p == 0 and t == 1:
-                fn += 1
-
-            elif p == 1 and t == 0:
-                fp += 1
-
-    recall = tp / (tp + fn)
-    precision = tp / (tp + fp)
-    fs = (2 * precision * recall) / (precision + recall)
-    print("tp={0}, tn={1}, fn={2}, fp={3}".format(tp, tn, fn, fp))
-    print("total = {0}".format(tp + tn + fn + fp))
-    print("recall = {0}/{1} = {2}".format(tp, tp + fn, recall))
-    print("precision = {0}/{1} = {2}".format(tp, tp + fp, precision))
-    print("fscore = {0}/{1} = {2}".format(2 * precision * recall, precision + recall, fs))
+    return full_eval, pred_list, true_list
 
 
 def dataset_prep(loadfile=None, savefile=None):
@@ -303,6 +178,9 @@ def dataset_prep(loadfile=None, savefile=None):
     if loadfile:
         print("Loading corpus ...")
         corpus = pickle.load(open(loadfile, "rb"))
+        with open("file_order.txt", 'w') as f:
+            f.write("\n".join([p.filename for p in corpus.protocols]))
+            print("DONE WRITING FILENAMES")
         corpus.gen_data(cfg.PER)
     else:
         print("Loading Data ...")
@@ -323,10 +201,10 @@ def dataset_prep(loadfile=None, savefile=None):
 def multi_batchify(samples):
     samples = sorted(samples, key=lambda s: len(s.SENT), reverse=True)
 
-    SENT, X, C, POS, Y, P = zip(*[(sample.SENT, sample.X, sample.C, sample.POS, sample.Y, sample.P)
+    SENT, X, Y, P = zip(*[(sample.SENT, sample.X, sample.Y, sample.P)
                                   for sample in samples])
 
-    return SENT, X, C, POS, Y, P
+    return SENT, X, Y, P
 
 
 def to_variables(X, C, POS, Y):
@@ -367,7 +245,7 @@ def single_run(corpus, index, title, overwrite, only_test=False):
 
     print("Testing ...")
     test_loader = DataLoader(corpus.test, batch_size=cfg.BATCH_SIZE, num_workers=28, collate_fn=collate_fn)
-    test_eval, only_ent_eval, pred_list, true_list = test("test", test_loader, corpus.tag_idx, the_model)
+    test_eval, pred_list, true_list = test("test", test_loader, corpus.tag_idx, the_model)
 
     print("Writing Brat File ...")
     bratfile_full = Writer(cfg.CONF_DIR, os.path.join(cfg.BRAT_DIR, title), "full_out", corpus.tag_idx)
@@ -375,11 +253,9 @@ def single_run(corpus, index, title, overwrite, only_test=False):
 
     # convert idx to label
     test_eval.print_results()
-    only_ent_eval.print_results()
     txt_res_file = os.path.join(cfg.TEXT_RESULT_DIR, title + ".txt")
     csv_res_file = os.path.join(cfg.CSV_RESULT_DIR, title + ".csv")
     test_eval.write_results(txt_res_file, title + "g={0}".format(cfg.LM_GAMMA), overwrite)
-    only_ent_eval.write_results(txt_res_file, title + " g={0}".format(cfg.LM_GAMMA), overwrite)
     test_eval.write_csv_results(csv_res_file, title + "g={0}".format(cfg.LM_GAMMA), overwrite)
 
     test_loader = DataLoader(corpus.test, batch_size=cfg.BATCH_SIZE, num_workers=28, collate_fn=collate_fn)
@@ -390,62 +266,7 @@ def single_run(corpus, index, title, overwrite, only_test=False):
     return test_eval
 
 
-def build_cmd_parser():
-    parser = argparse.ArgumentParser(description='Action Sequence Labeler.')
-
-    parser.add_argument('--train_per', dest='train_per', type=int, required=False,
-                        help='Percentage of the train data to be actually used for training. Int between (0-100)')
-
-    parser.add_argument('--train_word_emb', dest='train_word_emb', required=True,
-                        choices=["pre_and_post", "random", "pre_only"],
-                        help='Pick the word embedding strategy. pre_and_post will use pretrained word embeddings '
-                             'and will also train further on those, pre_only will not train further '
-                             'and random will initialize the random word embeddings')
-
-    parser.add_argument('--lm_gamma', metavar='G', type=float, required=True,
-                        help='If Language model is to be used, gamma is a gating variable that controls '
-                             'how important LM should be. A float number between (0 - 1)')
-
-    parser.add_argument('--char_level', required=True, choices=["None", "Input", "Attention", "Highway"],
-                        help='The char level embedding to add on top of the bi LSTM.')
-
-    parser.add_argument('--pos', required=True, choices=["No", "Yes"],
-                        help='The feature level to be added on top of the bi LSTM.')
-
-    parser.add_argument("filename", metavar="String",
-                        help="This is the filename (without ext) "
-                             "that will be given to the file where all the results will be stored ")
-
-    args = parser.parse_args()
-    return args
-
-
-def current_config():
-    s = "TRAIN_PER = " + str(cfg.TRAIN_PER) + "\n"
-    s += "WORD_VOCAB = " + str(cfg.WORD_VOCAB) + "\n"
-    s += "TRAIN_WORD_EMB = " + str(cfg.TRAIN_WORD_EMB) + "\n"
-    s += "LM_GAMMA = " + str(cfg.LM_GAMMA) + "\n"
-    s += "CHAR_LEVEL = " + cfg.CHAR_LEVEL + "\n"
-    s += "CHAR_VOCAB = {0}".format(cfg.CHAR_VOCAB) + "\n"
-    s += "POS = " + cfg.POS_FEATURE + "\n"
-    s += "DEP_LABEL = " + cfg.DEP_LABEL_FEATURE + "\n"
-    s += "DEP_WORD = " + cfg.DEP_WORD_FEATURE + "\n"
-
-    return s
-
-
 def main(nrun=1):
-    args = build_cmd_parser()
-
-    if args.train_per is not None:
-        cfg.TRAIN_PER = args.train_per
-
-    cfg.TRAIN_WORD_EMB = args.train_word_emb
-    cfg.CHAR_LEVEL = args.char_level
-    cfg.POS_FEATURE = args.pos
-    cfg.DEP_LABEL_FEATURE = "No"
-    cfg.DEP_WORD_FEATURE = "No"
-    cfg.LM_GAMMA = args.lm_gamma
     for run in range(nrun):
         dataset = dataset_prep(loadfile=cfg.DB)
         cfg.CATEGORIES = len(dataset.tag_idx.keys()) + 2  # +2 for start and end tags of a seq
@@ -464,8 +285,7 @@ def main(nrun=1):
         if cfg.DEP_WORD_FEATURE == "Yes":
             cfg.DEP_WORD_VOCAB = dataset.embedding_matrix.shape[0]
 
-        print(current_config())
-        test_ev = single_run(dataset, i, args.filename, overwrite=False, only_test=False)
+        test_ev = single_run(dataset, i, "BiLSTM_CRF", overwrite=False, only_test=False)
         plt.clf()
 
 

@@ -30,7 +30,7 @@ class MultiBatchCharNet(nn.Module):
         self.hidden_state = (h0_encoder_bi.cuda(), c0_encoder_bi.cuda())
 
     def init_weights(self):
-        initrange = 0.01
+        initrange = 0.1
         self.emb.weight.data.uniform_(-initrange, initrange)
 
     def pad(self, minibatch, pad_token, pad_first=False, fix_length=None, include_lengths=True):

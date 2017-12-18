@@ -1,17 +1,12 @@
 import glob
 import logging
 import os
-import random
 from collections import namedtuple, OrderedDict
 
 from gensim.models import KeyedVectors, Word2Vec
-from keras.preprocessing.text import Tokenizer
-from nltk import DependencyGraph
 from tabulate import tabulate
-import pickle
 
 from preprocessing.feature_engineering.GeniaTagger import GeniaTagger
-from nltk.parse.stanford import StanfordDependencyParser
 from sklearn.preprocessing import OneHotEncoder
 
 from tqdm import tqdm
@@ -27,9 +22,8 @@ from preprocessing.feature_engineering import features
 from preprocessing.feature_engineering.datasets import Window
 import pandas as pd
 
-from preprocessing.feature_engineering.pos import PosTagger
 
-from corpus.ProtoFile import ProtoFile, Token
+from corpus.ProtoFile import ProtoFile
 import itertools
 from builtins import any as b_any
 
