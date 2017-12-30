@@ -110,7 +110,7 @@ def load_windows(articles, features=None, nb_skip=0, every_nth_window=0,
         only_labeled_windows: If set to True, the function will only return windows that contain
             at least one labeled token (at leas one named entity). (Default is False.)
     Returns:
-        Generator of Window objects, i.e. list of Window objects.
+        Generator of EntityWindow objects, i.e. list of EntityWindow objects.
     """
     skipped = 0
     processed_windows = 0
@@ -129,9 +129,9 @@ def load_windows(articles, features=None, nb_skip=0, every_nth_window=0,
             for token_window in token_windows:
                 if nb_skip > skipped:
                     skipped += 1
-                    yield Window([], "0")
+                    yield EntityWindow([], "0")
                     continue
-                window = Window(token_window, pno)
+                window = EntityWindow(token_window, pno)
                 # generate features for all tokens in the window
 
                 if features is not None and len(window.tokens) > 0:
@@ -185,7 +185,7 @@ def generate_examples(windows, nb_append=None, nb_skip=0, verbose=True):
                 feature_values_lists.append(fvl)
             # yield (features, labels) pair
 
-            print("Window's protocol: {0}".format(window.pno))
+            print("EntityWindow's protocol: {0}".format(window.pno))
             yield (feature_values_lists, words, labels)
 
             # print message every nth window
@@ -203,17 +203,18 @@ def generate_examples(windows, nb_append=None, nb_skip=0, verbose=True):
             if nb_append is not None and added == nb_append:
                 break
 
-class Window:
+
+class EntityWindow:
     """Encapsulates a small window of text/tokens."""
 
     def __init__(self, tokens, pno, pos, dep=None):
-        """Initialize a new Window object.
+        """Initialize a new EntityWindow object.
 
         Args:
             tokens: The tokens/words contained in the text window, provided as list of Token
                 objects.
         """
-        # super(Window, self).__init__("")  # because pylint complains otherwise
+        # super(EntityWindow, self).__init__("")  # because pylint complains otherwise
         self.tokens = tokens
         self.pno = pno
         self.pos = pos
@@ -323,25 +324,78 @@ class Window:
         return sum([1 for label in labels if label.find('Action') != -1])
 
 
-class Token(object):
-    """Encapsulates a token/word.
-    Members:
-        token.original: The original token, i.e. the word _and_ the label, e.g. "John/PER".
-        token.word: The string content of the token, without the label.
-        token.label: The label of the token.
-        token.feature_values: The feature values, after they have been applied.
-            (See Window.apply_features().)
-    """
+class RelationWindow:
+    """Encapsulates a small window of text/tokens."""
 
-    def __init__(self, word, label=cfg.NO_NE_LABEL):
-        """Initialize a new Token object.
+    def __init__(self, links):
+        """Initialize a new Window object.
+
         Args:
-            original: The original word as found in the text document, including the label,
-                e.g. "foo", "John/PER".
+            links: The tokens/words contained in the text window, provided as list of Token
+                objects.
         """
-        # self.original = original
+        self.links = links
 
-        self.word = word
-        self.label = label
-        # self._word_ascii = None
-        self.feature_values = None
+    def apply_features(self, features):
+        """Applies a list of feature generators to the tokens of this window.
+        Each feature generator will then generate a list of featue values (as strings) for each
+        token. Each of these lists can be empty. The lists are saved in the tokens and can later
+        on be requested multiple times without the generation overhead (which can be heavy for
+        some features).
+
+        Args:
+            features: A list of feature generators from features.py .
+        """
+        # feature_values is a multi-dimensional list
+        # 1st dimension: Feature (class)
+        # 2nd dimension: token
+        # 3rd dimension: values (for this token and feature, usually just one value, sometimes more,
+        #                        e.g. "w2vc=975")
+        features_values = [feature.convert_window(self) for feature in features]
+
+        for link in self.links:
+            link.feature_values = []
+
+        # After this, each self.token.feature_values will be a simple list
+        # of feature values, e.g. ["w2v=875", "bc=48", ...]
+        for feature_value in features_values:
+            assert isinstance(feature_value, list)
+            assert len(feature_value) == len(self.links), (len(feature_value), len(self.links))
+            for link_idx in range(len(self.links)):
+                self.links[link_idx].feature_values.extend(feature_value[link_idx])
+
+    def get_feature_values_list(self, word_index, skipchain_left, skipchain_right):
+        """Generates a list of feature values (strings) for one token/word in the window.
+
+        Args:
+            word_index: The index of the word/token for which to generate the featueres.
+            skipchain_left: How many words to the left will be included among the features of
+                the requested word. E.g. a value of 1 could lead to a list like
+                ["-1:w2vc=123", "-1:l=30", "0:w2vc=18", "0:l=4"].
+            skipchain_right: Like skipchain_left, but to the right side.
+        Returns:
+            List of strings (list of feature values).
+        """
+        assert word_index >= 0
+        assert word_index < len(self.links)
+
+        all_feature_values = []
+
+        start = max(0, word_index - skipchain_left)
+        end = min(len(self.links), word_index + 1 + skipchain_right)
+        for i, link in enumerate(self.links[start:end]):
+            diff = start + i - word_index
+            feature_values = ["%d:%s" % (diff, feature_value)
+                              for feature_value in link.feature_values]
+            all_feature_values.extend(feature_values)
+        all_feature_values = self.__list_2_dict(all_feature_values)
+        return all_feature_values
+
+    @staticmethod
+    def __list_2_dict(of_list):
+        of_dict = OrderedDict()
+        for item in of_list:
+            w1, w2 = re.search('([^=]*)=(.*)', item).groups()
+            of_dict[w1] = w2
+
+        return of_dict

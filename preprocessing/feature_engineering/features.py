@@ -102,9 +102,9 @@ class EntityTypeFeatures(object):
         pass
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -139,9 +139,9 @@ class NearestEntityFeatures(object):
                     return tokens[i + w]
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -306,9 +306,9 @@ class LemmatizerFeatures(object):
         return self.unigrams.get_rank_of(token.word, '#')
 
     def stanford_pos_tag(self, window):
-        """Converts a Window (list of tokens) to their POS tags.
+        """Converts a EntityWindow (list of tokens) to their POS tags.
         Args:
-            window: Window object containing the token list to POS-tag.
+            window: EntityWindow object containing the token list to POS-tag.
         Returns:
             List of POS tags as strings.
         """
@@ -324,9 +324,9 @@ class StartsWithUppercaseFeature(object):
         pass
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -351,9 +351,9 @@ class TokenLengthFeature(object):
         self.max_length = max_length
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -374,9 +374,9 @@ class ContainsDigitsFeature(object):
         self.regexp_contains_digits = re.compile(r'[0-9]+')
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -398,9 +398,9 @@ class ContainsPunctuationFeature(object):
         self.regexp_contains_punctuation = re.compile(r'[\.\,\:\;\(\)\[\]\?\!]+')
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -422,9 +422,9 @@ class OnlyDigitsFeature(object):
         self.regexp_contains_only_digits = re.compile(r'^[0-9]+$')
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -446,9 +446,9 @@ class OnlyPunctuationFeature(object):
         self.regexp_contains_only_punctuation = re.compile(r'^[\.\,\:\;\(\)\[\]\?\!]+$')
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -474,9 +474,9 @@ class W2VClusterFeature(object):
         self.w2v_clusters = w2v_clusters
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -511,9 +511,9 @@ class BrownClusterFeature(object):
         self.brown_clusters = brown_clusters
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -549,9 +549,9 @@ class BrownClusterBitsFeature(object):
         self.brown_clusters = brown_clusters
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -588,9 +588,9 @@ class GazetteerFeature(object):
         self.name = name
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -652,9 +652,9 @@ class WordPatternFeature(object):
         ]
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -702,9 +702,9 @@ class UnigramFeature(object):
         self.unigrams = unigrams
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -748,9 +748,9 @@ class BigramFeature(object):
         self.unigrams = unigrams
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -793,9 +793,9 @@ class PrefixFeature(object):
         pass
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -819,9 +819,9 @@ class SuffixFeature(object):
         pass
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -850,9 +850,9 @@ class POSTagFeature(object):
         self.size = 1
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.
@@ -897,9 +897,9 @@ class POSTagFeature(object):
         return result
 
     def stanford_pos_tag(self, window):
-        """Converts a Window (list of tokens) to their POS tags.
+        """Converts a EntityWindow (list of tokens) to their POS tags.
          Args:
-             window: Window object containing the token list to POS-tag.
+             window: EntityWindow object containing the token list to POS-tag.
          Returns:
              List of POS tags as strings.
          """
@@ -928,9 +928,9 @@ class LDATopicFeature(object):
         self.prob_threshold = prob_threshold
 
     def convert_window(self, window):
-        """Converts a Window object into a list of lists of features, where features are strings.
+        """Converts a EntityWindow object into a list of lists of features, where features are strings.
         Args:
-            window: The Window object (defined in datasets.py) to use.
+            window: The EntityWindow object (defined in datasets.py) to use.
         Returns:
             List of lists of features.
             One list of features for each token.

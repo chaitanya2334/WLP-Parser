@@ -19,9 +19,8 @@ from torch.utils import data
 
 import config as cfg
 from preprocessing.feature_engineering import features
-from preprocessing.feature_engineering.datasets import Window
+from preprocessing.feature_engineering.datasets import EntityWindow, RelationWindow
 import pandas as pd
-
 
 from corpus.ProtoFile import ProtoFile
 import itertools
@@ -148,6 +147,52 @@ class CustomDataset(data.Dataset):
         return ret
 
 
+class Features(object):
+    '''
+    converts each row of dataframe (filled with strings) into a one hot vector.
+    '''
+
+    def __init__(self, dataframe, features=None):
+        self.encoder = OneHotEncoder()
+        self.feats_used = features
+        self.df = dataframe
+
+        # only the columns in df are used to generate one hot vectors
+        if self.feats_used:
+            self.filter_by_features(self.feats_used)
+
+        # convert strings inside dataframe into numbers/indexes
+        self.factorize()
+
+        # convert those indexes into one hot vector
+        self.gen_onehotvector()
+
+    def filter_by_features(self, feats):
+        columns = self.df.columns.values
+        self.df = self.df[[j for i in feats for j in columns if i in j]]
+
+    def factorize(self):
+        self.df = self.df.fillna(0)
+        print(tabulate(self.df[:10], headers='keys', tablefmt='psql'))
+        char_cols = self.df.dtypes.pipe(lambda x: x[x == 'object']).index
+        print(char_cols)
+        unique_ids = dict.fromkeys(char_cols)
+        for c in char_cols:
+            self.df[c], unique_ids[c] = pd.factorize(self.df[c])
+
+        print(unique_ids)
+
+    def gen_onehotvector(self):
+        self.encoder.fit(self.df.as_matrix())
+
+    def __getitem__(self, item):
+
+        if isinstance(item, tuple):
+            raise NotImplementedError("cannot be used with tuples")
+        else:
+            return self.encoder.transform(self.df[item].as_matrix())
+
+
 class WLPDataset(object):
     def __init__(self, gen_feat=False, min_wcount=1, shuffle_once=True, lowercase=False, replace_digits=False):
 
@@ -160,6 +205,9 @@ class WLPDataset(object):
         genia = GeniaTagger(feat_cfg.GENIA_TAGGER_FILEPATH)
         print("Using GENIA POS TAGGER")
         self.protocols = self.read_protocols(genia=genia, gen_features=True, dir_path=cfg.ARTICLES_FOLDERPATH)
+
+        # not used... TODO use.
+        # self.ent_features = Features(ent_enc, ent_df)
 
         self.tag_idx = self.make_bio_dict(cfg.LABELS)
         # self.tokens2d, self.pnos = self.__gen_data(replace_digit=cfg.REPLACE_DIGITS)
@@ -178,7 +226,12 @@ class WLPDataset(object):
             print(
                 "Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
 
-            self.enc, self.f_df = self.__gen_all_features(do_dep=False)
+            self.enc, self.f_df = self.__gen_all_ent_features(do_dep=False)
+            self.rel_df = self.__gen_all_rel_features()
+            self.full_rel_features = Features(self.rel_df)
+
+    def get_feature_vectors(self, columns):
+        return Features(self.rel_df, columns)
 
     def find_oov(self):
         is_oov = dict()
@@ -347,7 +400,36 @@ class WLPDataset(object):
 
         return differences
 
-    def __gen_all_features(self, do_dep=False):
+    def __gen_all_rel_features(self):
+        i = 0
+        p_cut_list = [i]
+        mega_list = []
+
+        for p in tqdm(self.protocols):
+            f_dicts = self.__gen_single_rel_feature(p.links)
+            mega_list.extend(f_dicts)
+            i += len(p.links)
+            p_cut_list.append(i)
+
+        mega_df = pd.DataFrame(mega_list)
+
+        return mega_df
+
+    def __gen_single_rel_feature(self, links):
+        # expect all information to be packed in each link in links
+        window = RelationWindow(links)
+        window.apply_features(self.feat_list)
+        feature_dicts = []
+        for link_idx in range(len(window.links)):
+            # do this only if we need to get features from left and right side of the links as well.
+            fvl = window.get_feature_values_list(link_idx, feat_cfg.SKIPCHAIN_LEFT, feat_cfg.SKIPCHAIN_RIGHT)
+            feature_dicts.append(fvl)
+
+        # df = pd.DataFrame(feature_dicts)
+
+        return feature_dicts
+
+    def __gen_all_ent_features(self, do_dep=False):
         # updates each protocol in self.protocols with its feature set.
         i = 0
         p_cut_list = [0]
@@ -426,7 +508,7 @@ class WLPDataset(object):
         return enc, mega_df
 
     def __gen_single_feature(self, tokens1d, pno, pos, dep=None):
-        window = Window(tokens1d, pno, pos, dep)
+        window = EntityWindow(tokens1d, pno, pos, dep)
         window.apply_features(self.feat_list)
         feature_dicts = []
         for word_idx in range(len(window.tokens)):

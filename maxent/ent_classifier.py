@@ -14,6 +14,7 @@ from corpus.WLPDataset import WLPDataset
 from postprocessing.evaluator import Evaluator
 import numpy as np
 
+
 def dataset_prep(loadfile=None, savefile=None):
     start_time = time.time()
 
@@ -64,7 +65,7 @@ def pos_verb_only(start, end, dataset, labels):
     print("VB is {}".format(dataset.pos_ids['VB']))
     id2pos = {v: k for k, v in dataset.pos_ids.items()}
 
-    df_l = [labels.index(id2pos[item])+1 if id2pos[item] in labels else 0 for item in df_l]
+    df_l = [labels.index(id2pos[item]) + 1 if id2pos[item] in labels else 0 for item in df_l]
     print(df_l)
     w = list(chain.from_iterable(dataset.tokens2d[start:end]))
     w = [token.word for token in w]
@@ -113,8 +114,6 @@ def main():
         x_test, w_test, y_test = extract_data(ndev, ntest, dataset, feat)
 
         model = LogisticRegression(solver='lbfgs', multi_class='multinomial', n_jobs=8)
-
-        clf = LogisticRegressionCV(solver='lbfgs', multi_class='multinomial', cv=2, n_jobs=8)
 
         model.fit(x_train, y_train)
 
@@ -172,4 +171,4 @@ def pos():
 
 if __name__ == '__main__':
     main()
-    #pos()
+    # pos()

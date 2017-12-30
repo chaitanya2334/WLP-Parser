@@ -22,7 +22,7 @@ import html
 logger = logging.getLogger(__name__)
 
 Tag = namedtuple("Tag", "tag_id, tag_name, start, end, words")
-Link = namedtuple("Link", "l_id, l_name, arg1, arg2")
+# Link = namedtuple("Link", "l_id, l_name, arg1, arg2")
 
 
 # its a good idea to keep a datastructure like
@@ -406,13 +406,30 @@ class ProtoFile:
         return sum([count[1] for count in self.get_label_counts(add_no_ne_label=add_no_ne_label)])
 
 
+class Link(object):
+
+    def __init__(self, l_id, l_name, arg1, arg2):
+
+        self.arg1 = arg1
+        self.arg2 = arg2
+        self.label = l_name
+        self.l_id = l_id
+        self.feature_values = None
+
+        # type checks
+        assert isinstance(self.arg1, Tag)
+        assert isinstance(self.arg2, Tag)
+        assert isinstance(self.label, str)
+        assert isinstance(self.l_id, str)
+
+
 class Token(object):
     """Encapsulates a token/word.
     Members:
         token.word: The string content of the token, without the label.
         token.label: The label of the token.
         token.feature_values: The feature values, after they have been applied.
-            (See Window.apply_features().)
+            (See EntityWindow.apply_features().)
     """
 
     def __init__(self, word, label=cfg.NO_NE_LABEL, lowercase=False, replace_digits=False):
