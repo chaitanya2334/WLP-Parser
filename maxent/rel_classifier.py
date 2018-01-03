@@ -2,6 +2,7 @@ import pickle
 from itertools import chain
 
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report, precision_recall_fscore_support
 from sklearn.preprocessing import OneHotEncoder
 
 import config as cfg
@@ -10,15 +11,13 @@ from postprocessing.evaluator import Evaluator
 
 
 def dataset_prep(loadfile=None, savefile=None):
-
     if loadfile:
         print("Loading corpus ...")
         corpus = pickle.load(open(loadfile, "rb"))
-        corpus.gen_data(cfg.PER)
     else:
         print("Loading Data ...")
-        corpus = WLPDataset(gen_feat=True)
-        corpus.gen_data(cfg.PER)
+        corpus = WLPDataset(gen_rel_feat=True, prep_emb=False)
+        # corpus.gen_data(cfg.PER)
 
         if savefile:
             print("Saving corpus and embedding matrix ...")
@@ -26,77 +25,83 @@ def dataset_prep(loadfile=None, savefile=None):
 
     return corpus
 
-#TODO fix
-def to_categorical(dataset, i, bio=False):
+
+def to_idx(dataset, links):
     rel_label_idx = dataset.rel_label_idx
-    links = dataset.protocols.links
+
     return [rel_label_idx[link.label] if link.label in rel_label_idx else
             rel_label_idx[cfg.NEG_REL_LABEL] for link in links]
 
 
-#TODO fix
 def extract_data(start, end, dataset, feat):
-
-    w = list(chain.from_iterable(dataset.tokens2d[start:end]))
-    w = [token.word for token in w]
-
     x = dataset.get_feature_vectors(feat)
-    x = x[dataset.cut_list[start]:dataset.cut_list[end]]
+    print("no of rows in dataframe:", len(x))
+    print("total no of links in protocols:")
+    print(sum([len(p.relations) for p in dataset.protocols]))
+    # count all the links uptil the "start" th protocol
+    l_start = sum([len(p.relations) for p in dataset.protocols[:start]])
+    # count all the links uptil the "end" th protocol
+    l_end = sum([len(p.relations) for p in dataset.protocols[:end]])
+    x = x[l_start:l_end]
+    print("extract_data")
+    print(x.A.shape, l_end, l_start, l_end - l_start)
+    links = list(chain.from_iterable([p.relations for p in dataset.protocols]))
+    y = to_idx(dataset, links[l_start:l_end])
 
-    y = list(
-        chain.from_iterable([to_categorical(dataset, item, bio=True) for item in range(start, end)]))
-    return x, w, y
+    return x, y
 
 
-#TODO fix
+def single_run(dataset, ntrain, ndev, ntest, feat):
+    x_train, y_train = extract_data(0, ntrain, dataset, feat)
+
+    x_test, y_test = extract_data(ndev, ntest, dataset, feat)
+
+    model = LogisticRegression(solver='lbfgs', multi_class='multinomial', n_jobs=8)
+
+    model.fit(x_train, y_train)
+
+    pred = model.predict(x_test)
+
+    print(feat)
+    print(classification_report(y_test, pred, target_names=cfg.RELATIONS))
+    print("Macro", precision_recall_fscore_support(y_test, pred, average='macro', labels=range(len(cfg.RELATIONS))))
+    print("Micro", precision_recall_fscore_support(y_test, pred, average='micro', labels=range(len(cfg.RELATIONS))))
+
+
 def main():
     dataset = dataset_prep(loadfile=cfg.DB_MAXENT)
-    dataset.tag_idx['<s>'] = len(dataset.tag_idx.keys())
-    dataset.tag_idx['</s>'] = len(dataset.tag_idx.keys())
-    total = len(dataset.tokens2d)
+    total = len(dataset.protocols)
 
     ntrain = int(total * .60)
     ndev = int(total * .80)
     ntest = total
 
+    word_features = ['wm1', 'hm1', 'wbnull', 'wbf', 'wbl', 'wbo', 'bm1f', 'bm1l', 'am2f', 'am2l']
+    ent_features = ['et12']
+    overlap_features = ['#mb', '#wb']
+    chunk_features = ['cphbnull', 'cphbfl', 'cphbf', 'cphbl', 'cphbo', 'cphbm1f', 'cphbm1l', 'cpham2f', 'cpham2l']
+    dep_features = ['et1dw1', 'et2dw2', 'h1dw1', 'h2dw2', 'et12SameNP', 'et12SamePP', 'et12SameVP']
+
     ablation = [
-        ['pos', 'ng0', 'bg', 'rel', 'dep', 'gov', 'lm'],  # FULL
-        ['ng0', 'bg', 'rel', 'dep', 'gov', 'lm'],  # -POS
-        ['pos', 'rel', 'dep', 'gov', 'lm'],  # -UNIGRAM/BIGRAM
-        ['pos', 'ng0', 'bg', 'lm'],  # -DEPs
-        ['pos', 'ng0', 'bg', 'rel', 'dep', 'gov'],  # -LEMMA
+        ent_features + overlap_features + chunk_features + dep_features,  # FULL
+        word_features + overlap_features + chunk_features + dep_features,  # -Ent
+        word_features + ent_features + chunk_features + dep_features,  # -overlap
+        word_features + ent_features + overlap_features + dep_features,  # -chunk
+        word_features + ent_features + overlap_features + chunk_features,  # -dep
     ]
 
-    addition = [
-        ['pos'],
-        ['ng0', 'bg'],
-        ['ng0', 'bg', 'lm'],
-        ['pos', 'ng0', 'bg'],
-        ['pos', 'ng0', 'bg', 'lm'],
-        ['pos', 'ng0', 'bg', 'rel', 'dep', 'gov', 'lm']
-    ]
+    addition = [word_features,
+                word_features + ent_features,
+                word_features + ent_features + overlap_features,
+                word_features + ent_features + overlap_features + chunk_features,
+                word_features + ent_features + overlap_features + chunk_features + dep_features,
+                ]
     for feat in addition:
-        x_train, w_train, y_train = extract_data(0, ntrain, dataset, feat)
+        single_run(dataset, ntrain, ndev, ntest, feat)
 
-        # print(list(dataset.f_df.columns.values))
+    for feat in ablation:
+        single_run(dataset, ntrain, ndev, ntest, feat)
 
-        x_test, w_test, y_test = extract_data(ndev, ntest, dataset, feat)
 
-        model = LogisticRegression(solver='lbfgs', multi_class='multinomial', n_jobs=8)
-
-        model.fit(x_train, y_train)
-
-        pred = model.predict(x_test)
-        print("ALL!")
-        evaluator = Evaluator("test_all", [0, 1], main_label_name=cfg.POSITIVE_LABEL, label2id=dataset.tag_idx,
-                              conll_eval=True)
-        evaluator.append_data(0, pred, w_test, y_test)
-        evaluator.classification_report()
-        print("ONLY ENTITIES!")
-        evaluator = Evaluator("test_ents_only", [0, 1], skip_label=['B-Action', 'I-Action'],
-                              main_label_name=cfg.POSITIVE_LABEL, label2id=dataset.tag_idx,
-                              conll_eval=True)
-        evaluator.append_data(0, pred, w_test, y_test)
-        evaluator.classification_report()
-
-#TODO after that, program each feature. Then test.
+if __name__ == '__main__':
+    main()

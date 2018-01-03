@@ -43,7 +43,7 @@ def write_labels(save_path):
 
     labels = [[word, "OOV"] if word in oov_words else [word, "Not OOV"] for word in y]
 
-    df = pd.DataFrame(labels, columns=["Words", "Vocab"])
+    df = pd.DataFrame(labels, columns=["WordFeatureGroup", "Vocab"])
 
     df.to_csv("visualization/data/oov_words_pnp.csv", sep='\t', index=False)
 

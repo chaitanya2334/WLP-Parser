@@ -57,7 +57,7 @@ class GeniaTagger(object):
                     sent = []
                 else:
                     word_tag = Tag(line.split("\t"))
-                    sent.append((word_tag.word, word_tag.pos))
+                    sent.append((word_tag.word, word_tag.pos, word_tag.chunk))
 
         in_file.close()
         out_file.close()

@@ -12,7 +12,7 @@ import config as cfg
 
 
 class Evaluator(object):
-    def __init__(self, name, main_label_ids, main_label_name, skip_label=None, label2id=None, conll_eval=False):
+    def __init__(self, name,  main_label_ids, main_label_name, to_skip_tags=False, skip_label=None, label2id=None, conll_eval=False):
         # assuming that labels are either B, I, or O only.
         # main_label_ids are ids that will be converted to 1. ( that is the ids for B and I )
         if label2id is None:
@@ -31,7 +31,8 @@ class Evaluator(object):
         self.start_time = time.time()
         self.total_samples = 0
         self.results = None
-        self.skip_tags = [label2id['<s>'], label2id['</s>']]
+        if to_skip_tags:
+            self.skip_tags = [label2id['<s>'], label2id['</s>']]
 
         if skip_label:
             self.skip_tags += [label2id[label] for label in skip_label]
@@ -47,6 +48,7 @@ class Evaluator(object):
         self.conll_format = []
 
     def append_data(self, cost, predicted_labels, word_ids, label_ids):
+        # to be used for entity classifier
         self.total_samples += 1
         self.cost_sum += cost
         self.token_count += len(label_ids)
@@ -69,6 +71,20 @@ class Evaluator(object):
                     print("Unexpected label id in predictions.")
 
         self.conll_format.append("")
+
+    def append_data_rel_classifier(self, cost, preds, trues):
+        assert len(preds) == len(trues), "pred list and true list are not of same length: {0}, {1}".\
+            format(len(preds), len(trues))
+        self.total_samples += 1
+        self.cost_sum += cost
+        self.token_count += len(preds)
+        self.main_predicted_count += sum([pred in self.main_label_ids
+                                          for pred in preds])
+
+        self.main_total_count += len([true in self.main_label_ids for true in trues])
+
+        self.main_correct_count += sum([pred_label in self.main_label_ids and true_label in self.main_label_ids
+                                        for pred_label, true_label in zip(preds, trues)])
 
     def macro_fscore(self, metrics_by_type):
         p_total = 0

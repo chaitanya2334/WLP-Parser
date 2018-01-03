@@ -1,11 +1,7 @@
 # TODO figure out the right name for this python file
 import re
-from gensim.models import Word2Vec, KeyedVectors
-from keras.preprocessing.text import Tokenizer
 from torch import LongTensor, cuda
 import config as cfg
-import numpy as np
-import itertools
 import collections
 
 

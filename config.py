@@ -129,6 +129,9 @@ NO_NE_LABEL = "O"
 LABELS = ["Action", "Reagent", "Location", "Device", "Mention", "Method", "Amount", "Concentration", "Size", "Time",
           "Temperature", "pH", "Speed", "Seal", "Modifier", "Generic-Measure", "Numerical", "Measure-Type"]
 
+RELATIONS = ["Acts-on", "Site", "Creates", "Using", "Count", "Measure-Type-Link", "Coreference-Link", "Mod-Link",
+             "Setting", "Measure", "Meronym", "Or", "Of-Type"]
+
 BIO_LABELS = [""]
 
 FEATURE_SIZE = 0
@@ -150,6 +153,9 @@ VIS_SAVE_DIR = os.path.join(CURRENT_DIR, "visualization/results")
 PLOT_SAVE_DIR = os.path.join(CURRENT_DIR, "results/plots")
 
 BATCH_TYPE = "multi"
+
+NEG_REL_LABEL = "0"
+
 
 def ver_print(string, value):
     if VERBOSE:

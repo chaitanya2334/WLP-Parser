@@ -75,21 +75,20 @@ def create_features(articles, verbose=True):
 
     # Load the wrapper for the stanford POS tagger
     # print_if_verbose("Loading POS-Tagger...")
-    pos = PosTagger(cfg.STANFORD_POS_JAR_FILEPATH, cfg.STANFORD_MODEL_FILEPATH,
-                    cache_filepath=None)
+
 
     # create feature generators
     result = [
         # EntityTypeFeatures(),
         # NearestEntityFeatures(),
-        LemmatizerFeatures(pos, ug_all_top),
+        LemmatizerFeatures( ug_all_top),
         # DepGraphFeatures(),
         # DepTypeFeatures(),
         # BrownClusterFeature(brown),
         # BrownClusterBitsFeature(brown, brown_bit_series),
         BigramFeature(ug_all_top),
         UnigramFeature(ug_all_top),
-        POSTagFeature(pos),
+        POSTagFeature(),
 
     ]
 
@@ -230,8 +229,7 @@ class DepGraphFeatures(object):
 class LemmatizerFeatures(object):
     # syn + lemma
 
-    def __init__(self, pos, unigrams):
-        self.pos_tagger = pos
+    def __init__(self, unigrams):
         self.unigrams = unigrams
         self.wordnet_lemmatizer = WordNetLemmatizer()
 
@@ -304,16 +302,6 @@ class LemmatizerFeatures(object):
             or -1 if it wasn't found among the unigrams.
         """
         return self.unigrams.get_rank_of(token.word, '#')
-
-    def stanford_pos_tag(self, window):
-        """Converts a EntityWindow (list of tokens) to their POS tags.
-        Args:
-            window: EntityWindow object containing the token list to POS-tag.
-        Returns:
-            List of POS tags as strings.
-        """
-        # print([token.word for token in window.tokens])
-        return self.pos_tagger.tag([token.word for token in window.tokens])
 
 
 class StartsWithUppercaseFeature(object):
@@ -840,13 +828,12 @@ class SuffixFeature(object):
 class POSTagFeature(object):
     """Generates a feature that describes the Part Of Speech tag of the word."""
 
-    def __init__(self, pos_tagger):
+    def __init__(self):
         """Instantiates a new object of this feature generator.
         Args:
             pos_tagger: An instance of PosTagger as defined in pos.py that can be queried
                 to estimate the POS-tag of a word.
         """
-        self.pos_tagger = pos_tagger
         self.size = 1
 
     def convert_window(self, window):
@@ -895,16 +882,6 @@ class POSTagFeature(object):
                 result.append(["pos"])
 
         return result
-
-    def stanford_pos_tag(self, window):
-        """Converts a EntityWindow (list of tokens) to their POS tags.
-         Args:
-             window: EntityWindow object containing the token list to POS-tag.
-         Returns:
-             List of POS tags as strings.
-         """
-
-        return self.pos_tagger.tag([token.word for token in window.tokens])
 
 
 class LDATopicFeature(object):

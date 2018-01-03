@@ -15,14 +15,14 @@ import logging
 from builtins import any as b_any
 import re
 
-from preprocessing.feature_engineering.GeniaTagger import GeniaTagger
+import itertools as it
 from preprocessing.feature_engineering.pos import PosTagger
 import html
 
 logger = logging.getLogger(__name__)
 
 Tag = namedtuple("Tag", "tag_id, tag_name, start, end, words")
-# Link = namedtuple("Link", "l_id, l_name, arg1, arg2")
+Link = namedtuple("Link", "l_id, l_name, arg1, arg2")
 
 
 # its a good idea to keep a datastructure like
@@ -40,7 +40,10 @@ class ProtoFile:
                                                                                         encoding='utf-8',
                                                                                         newline='') as a_f:
             self.tokenizer = MosesTokenizer()
-            self.lines = t_f.readlines()  # list of strings, each string is a sentence
+            self.lines = []
+            for line in t_f.readlines():
+                self.lines.append(html.unescape(line))
+
             self.text = "".join(self.lines)  # full text
             self.ann = a_f.readlines()
             self.status = self.__pretest()
@@ -56,8 +59,11 @@ class ProtoFile:
             self.__parse_links()
             self.tag_0_id = 'T0'
             self.tag_0_name = 'O'
-            self.tokens2d = self.gen_tokens(labels_allowed=cfg.LABELS, lowercase=lowercase, replace_digits=replace_digits)
+            self.tokens2d = self.gen_tokens(labels_allowed=cfg.LABELS, lowercase=lowercase,
+                                            replace_digits=replace_digits)
             self.tokens2d = [[self.clean_html_tag(token) for token in token1d] for token1d in self.tokens2d]
+
+            self.relations = self.gen_relations()
             self.word_cnt = sum(len(tokens1d) for tokens1d in self.tokens2d)
             self.f_df = None
             if gen_features:
@@ -262,6 +268,35 @@ class ProtoFile:
             ret = [link.arg1 for link in self.links if link.l_id == tid]
         return ret[0]
 
+    # TODO test
+    def get_wb(self, tag1, tag2):
+        # we want tag1 to appear before tag2
+        assert isinstance(tag1, Tag)
+        assert isinstance(tag2, Tag)
+        if tag1.end > tag2.start:
+            tag1, tag2 = tag2, tag1
+
+        return self.text[tag1.end:tag2.start]
+
+    def get_tb(self, tag1, tag2):
+        assert isinstance(tag1, Tag)
+        assert isinstance(tag2, Tag)
+        if tag1.end > tag2.start:
+            tag1, tag2 = tag2, tag1
+
+        idx = tag1.start
+        while idx < tag2.end:
+            tag = self.get_tag_by_start(idx)
+
+            idx = tag.end
+
+    # TODO test
+    def surr_words(self, tag, n):
+        fore_words = self.text[tag.end:].split()[:2]
+        back_words = self.text[:tag.start].split()[:-2]
+        return [fore_words + back_words]
+
+    # TODO test
     def __parse_e(self, e):
         links = []
         temp = e.rstrip()
@@ -278,11 +313,14 @@ class ProtoFile:
 
         return links
 
+    # TODO test
     def __parse_r(self, r):
         r_id, r_name, arg1, arg2 = r.rstrip().split()
         arg1_id = arg1.split(':')[1]
         arg2_id = arg2.split(':')[1]
-        link = Link(r_id, r_name, self.get_tag_by_id(arg1_id), self.get_tag_by_id(arg2_id))
+        arg1_tag = self.get_tag_by_id(arg1_id)
+        arg2_tag = self.get_tag_by_id(arg2_id)
+        link = Link(r_id, r_name, arg1_tag, arg2_tag)
         return link
 
     def __parse_tags(self):
@@ -345,7 +383,8 @@ class ProtoFile:
         for sent in self.sents:
             word_label_pairs = []
             wi = 0
-            # for every word in the sentence
+            sent = [html.unescape(word) for word in sent]
+
             while wi < len(sent):
                 word = sent[wi]
                 start = self.text.find(word, start)
@@ -371,10 +410,105 @@ class ProtoFile:
                     start += len(word)
                     wi += 1
 
-            tokens = [Token(word, label, lowercase=lowercase, replace_digits=replace_digits) for word, label in
+            tokens = [Token(html.unescape(word), label, lowercase=lowercase, replace_digits=replace_digits) for
+                      word, label in
                       word_label_pairs]
 
             ret.append(tokens)
+
+        return ret
+
+    def get_token_idx(self, tag):
+        def get_sentence_by_tag(t, lines, p):
+            # find the sentence number based on tag.
+            s = t.start
+            e = t.end
+            assert s < e, p.basename
+
+            sent_start = len(lines[0])
+            sent_end = sent_start
+            for i, sent in enumerate(lines[1:]):
+                sent_end += len(sent)
+                if sent_start <= s and e <= sent_end:
+                    return i
+
+                sent_start = sent_end
+
+            return None
+
+        sent_idx = get_sentence_by_tag(tag, self.lines, self)
+
+        assert sent_idx is not None
+
+        tokens1d = self.tokens2d[sent_idx]
+        offset = sum([len(sent) for sent in self.lines[:sent_idx + 1]])
+        start = offset
+        s_idx = 0
+
+        while start < tag.start:
+            # did not find s_idx, increment start to the next token's start
+            start = offset + html.unescape(self.lines[sent_idx + 1]).find(tokens1d[s_idx + 1].word,
+                                                                          start - offset + len(tokens1d[s_idx].word))
+            s_idx += 1
+
+        end = start
+        e_idx = s_idx
+        while end < tag.end:
+            if e_idx + 1 == len(tokens1d):
+                e_idx += 1
+                break
+            end = offset + html.unescape(self.lines[sent_idx + 1]).find(tokens1d[e_idx + 1].word,
+                                                                        end - offset + len(tokens1d[e_idx].word))
+            e_idx += 1
+
+        return sent_idx, (s_idx, e_idx)
+
+    # based on the assumption that a link is always between two arguments, both being in the same sentence.
+    def gen_relations(self):
+        ret = []
+        arg_perm = list(it.permutations(self.tags, 2))
+
+        for link in self.links:
+            # remove all the links that do exist from this list
+            arg_perm = [(_arg1, _arg2) for _arg1, _arg2 in arg_perm
+                        if _arg1.words != link.arg1.words or _arg2.words != link.arg2.words]
+
+            # assumption that both args are in the same sentence
+            sent_idx1, arg1 = self.get_token_idx(link.arg1)
+            sent_idx2, arg2 = self.get_token_idx(link.arg2)
+
+            if sent_idx1 == sent_idx2:  # verify that both arg1 and arg2 have the same sent idx
+
+                token_arg1 = [token.original for token in self.tokens2d[sent_idx1][arg1[0]:arg1[1]]]
+                token_arg2 = [token.original for token in self.tokens2d[sent_idx2][arg2[0]:arg2[1]]]
+
+                # TODO fix all these errors
+                if self.basename == "protocol_371":
+                    if sent_idx1 == 18 and token_arg1[-1] == "tubes":
+                        token_arg1[-1] = "tube"
+
+                    if sent_idx1 == 18 and token_arg2[-1] == "tubes":
+                        token_arg2[-1] = "tube"
+
+                if self.basename == "protocol_577":
+                    if sent_idx1 == 53 and token_arg1[-1] == "RPE":
+                        token_arg1[-1] = "AW2"
+                    if sent_idx1 == 53 and token_arg2[-1] == "RPE":
+                        token_arg2[-1] = "AW2"
+
+                # protocol 600 gave problem too
+                # (many protocols like this that have text in Tag different from text in self.sents fail too.)
+
+                # assert [html.unescape(word) for word in link.arg1.words] == token_arg1, (link.arg1.words, token_arg1)
+                # assert [html.unescape(word) for word in link.arg2.words] == token_arg2, (link.arg2.words, token_arg2)
+
+                ret.append(Relation(self, link.l_name, sent_idx1, arg1, arg2, link.arg1, link.arg2))
+
+        for arg1, arg2 in tqdm(arg_perm, desc="arg_perm " + self.protocol_name):
+            sent_idx1, arg1_idx = self.get_token_idx(arg1)
+            sent_idx2, arg2_idx = self.get_token_idx(arg2)
+            if sent_idx1 == sent_idx2:
+                ret.append(Relation(self, 'O', sent_idx1, arg1_idx, arg2_idx, arg1, arg2))
 
         return ret
 
@@ -406,21 +540,151 @@ class ProtoFile:
         return sum([count[1] for count in self.get_label_counts(add_no_ne_label=add_no_ne_label)])
 
 
-class Link(object):
+class Relation(object):
+    def __init__(self, protocol, l_name, sent_idx, arg1, arg2, arg1_tag, arg2_tag):
 
-    def __init__(self, l_id, l_name, arg1, arg2):
+        """
 
+        :param protocol: reference to the parent protocol object
+        :param l_name: label of the relation
+        :param sent_idx: The sentence index. The first index on the tokens2d data structure in the parent protocol object.
+        :param arg1: a tuple (start_idx, end_idx) the start and end index on the sentence where arg1 is
+        :param arg2: a tuple (start_idx, end_idx) the start and end index on the sentence where arg2 is
+        """
+
+        self.sent_idx = sent_idx
         self.arg1 = arg1
         self.arg2 = arg2
+        self.p = protocol
         self.label = l_name
-        self.l_id = l_id
+        self.arg1_tag = arg1_tag
+        self.arg2_tag = arg2_tag
+
         self.feature_values = None
 
         # type checks
-        assert isinstance(self.arg1, Tag)
-        assert isinstance(self.arg2, Tag)
+        assert isinstance(self.arg1, tuple)
+        assert isinstance(self.arg2, tuple)
         assert isinstance(self.label, str)
-        assert isinstance(self.l_id, str)
+        assert isinstance(self.sent_idx, int)
+        assert isinstance(self.p, ProtoFile)
+
+    def sameNP(self):
+        c_type = self.__is_same_chunk()
+        return c_type == "NP"
+
+    def sameVP(self):
+        c_type = self.__is_same_chunk()
+        return c_type == "VP"
+
+    def samePP(self):
+        c_type = self.__is_same_chunk()
+        return c_type == "PP"
+
+    def arg1_deps(self):
+        return self.__arg_deps(self.arg1)
+
+    def arg2_deps(self):
+        return self.__arg_deps(self.arg2)
+
+    def get_arg1_tokens(self):
+        return self.__get_tokens(self.arg1)
+
+    def get_arg2_tokens(self):
+        return self.__get_tokens(self.arg2)
+
+    def is_1_before_2(self):
+        return self.arg1[1] < self.arg2[0]
+
+    def get_tokens_bet(self):
+        return self.__get_bet(self.p.tokens2d)
+
+    def get_b_tokens(self, no):
+        return self.__get_b(self.p.tokens2d, no)
+
+    def get_a_tokens(self, no):
+        return self.__get_a(self.p.tokens2d, no)
+
+    def get_bet_chunks(self):
+        pos = self.__get_bet(self.p.pos_tags)
+        return [p[2] for p in pos]
+
+    def get_b_chunks(self, no):
+        pos = self.__get_b(self.p.pos_tags, no)
+        return [p[2] for p in pos]
+
+    def get_a_chunks(self, no):
+        pos = self.__get_a(self.p.pos_tags, no)
+        return [p[2] for p in pos]
+
+    def __get_bet(self, list2d):
+        if self.is_1_before_2():
+            return list2d[self.sent_idx][self.arg1[1]:self.arg2[0]]
+        else:
+            return list2d[self.sent_idx][self.arg2[1]:self.arg1[0]]
+
+    def __get_b(self, list2d, no):
+        if self.is_1_before_2():
+            return list2d[self.sent_idx][self.arg1[0] - no:self.arg1[0]]
+        else:
+            return list2d[self.sent_idx][self.arg2[0] - no:self.arg2[0]]
+
+    def __get_a(self, list2d, no):
+        if self.is_1_before_2():
+            return list2d[self.sent_idx][self.arg2[1]:self.arg2[1] + no]
+        else:
+            return list2d[self.sent_idx][self.arg1[1]:self.arg1[1] + no]
+
+    def __arg_deps(self, arg):
+        def get_deps(triples, word):
+            dep = (0, 0)
+            for g, r, d in triples:
+                if g[0] == word:
+                    dep = d
+                    return dep
+
+            return dep
+
+        dep_graph = self.p.get_deps()[self.sent_idx]
+        t = dep_graph.triples()
+        tokens = self.__get_tokens(arg)
+        deps = [get_deps(t, token.word) for token in tokens]
+
+        return deps
+
+    def __get_tokens(self, arg):
+        # TODO undo hack
+        if arg[0] == arg[1]:
+            arg = (arg[0], arg[1] + 1)
+
+        return self.p.tokens2d[self.sent_idx][arg[0]:arg[1]]
+
+    def __get_all(self, list2d):
+        if self.is_1_before_2():
+            return list2d[self.sent_idx][self.arg1[0]:self.arg2[1]]
+        else:
+            return list2d[self.sent_idx][self.arg2[0]:self.arg1[1]]
+
+    def __is_same_chunk(self):
+        # checks if arg1 and arg2 are in the same chunk. if so, it will return the chunk type.
+        if self.is_1_before_2():
+            pos = self.p.pos_tags[self.sent_idx][self.arg1[0]:self.arg2[1]]
+        else:
+            pos = self.p.pos_tags[self.sent_idx][self.arg2[0]:self.arg1[1]]
+
+        if not pos:
+            return False
+
+        start_chunk = pos[0][2]
+        if start_chunk != 'O':
+            start_chunk = start_chunk[2:]
+        for p in pos:
+            if p[2][0] == 'O' or p[2][0] == 'B':
+                return False
+
+        return start_chunk
+
+
 
 
 class Token(object):

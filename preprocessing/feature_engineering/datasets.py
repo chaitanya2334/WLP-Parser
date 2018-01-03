@@ -327,14 +327,16 @@ class EntityWindow:
 class RelationWindow:
     """Encapsulates a small window of text/tokens."""
 
-    def __init__(self, links):
+    def __init__(self, relations):
         """Initialize a new Window object.
 
         Args:
-            links: The tokens/words contained in the text window, provided as list of Token
-                objects.
+            links: 1d list [link1, link2, ... ] each link consist of two args
+
         """
-        self.links = links
+        self.relations = relations
+
+        # type check
 
     def apply_features(self, features):
         """Applies a list of feature generators to the tokens of this window.
@@ -353,16 +355,16 @@ class RelationWindow:
         #                        e.g. "w2vc=975")
         features_values = [feature.convert_window(self) for feature in features]
 
-        for link in self.links:
+        for link in self.relations:
             link.feature_values = []
 
         # After this, each self.token.feature_values will be a simple list
         # of feature values, e.g. ["w2v=875", "bc=48", ...]
         for feature_value in features_values:
             assert isinstance(feature_value, list)
-            assert len(feature_value) == len(self.links), (len(feature_value), len(self.links))
-            for link_idx in range(len(self.links)):
-                self.links[link_idx].feature_values.extend(feature_value[link_idx])
+            assert len(feature_value) == len(self.relations), (len(feature_value), len(self.relations))
+            for link_idx in range(len(self.relations)):
+                self.relations[link_idx].feature_values.extend(feature_value[link_idx])
 
     def get_feature_values_list(self, word_index, skipchain_left, skipchain_right):
         """Generates a list of feature values (strings) for one token/word in the window.
@@ -377,13 +379,13 @@ class RelationWindow:
             List of strings (list of feature values).
         """
         assert word_index >= 0
-        assert word_index < len(self.links)
+        assert word_index < len(self.relations)
 
         all_feature_values = []
 
         start = max(0, word_index - skipchain_left)
-        end = min(len(self.links), word_index + 1 + skipchain_right)
-        for i, link in enumerate(self.links[start:end]):
+        end = min(len(self.relations), word_index + 1 + skipchain_right)
+        for i, link in enumerate(self.relations[start:end]):
             diff = start + i - word_index
             feature_values = ["%d:%s" % (diff, feature_value)
                               for feature_value in link.feature_values]

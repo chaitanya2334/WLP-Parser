@@ -66,11 +66,11 @@ LDA_COUNT_TOPICS = 100
 # filepath to the directory containing the stanford POS tagger
 STANFORD_POS_DIR = os.path.join(CURRENT_DIR, "preprocessing/feature_engineering/stanford-postagger-full-2017-06-09")
 
-STANFORD_PARSER_PATH = os.path.join(CURRENT_DIR, "preprocessing/feature_engineering/stanford-parser-full-2016-10-31")
+STANFORD_PARSER_PATH = os.path.join(CURRENT_DIR, "preprocessing/feature_engineering/stanford-parser-full-2017-06-09")
 
 STANFORD_PARSER_JAR = os.path.join(STANFORD_PARSER_PATH, "stanford-parser.jar")
 
-STANFORD_PARSER_MODEL_JAR = os.path.join(STANFORD_PARSER_PATH, "stanford-parser-3.7.0-models.jar")
+STANFORD_PARSER_MODEL_JAR = os.path.join(STANFORD_PARSER_PATH, "stanford-parser-3.8.0-models.jar")
 
 # filepath to the jar of the stanford POS tagger
 STANFORD_POS_JAR_FILEPATH = os.path.join(STANFORD_POS_DIR, "stanford-postagger-3.8.0.jar")
@@ -96,10 +96,10 @@ WINDOW_SIZE = 20
 # how many words to the left of a word will be part of the feature set of a word,
 # e.g. if set to >=1 and the word 1 left of a word W has the feature "w2v=123" then W will get a
 # featur "-1:w2v=123".
-SKIPCHAIN_LEFT = 2
+SKIPCHAIN_LEFT = 0
 
 # see SKIPCHAIN_LEFT, just to the right
-SKIPCHAIN_RIGHT = 2
+SKIPCHAIN_RIGHT = 0
 
 # maximum number of optimizer iterations during training of the CRF (if set to None the optimizer
 # will decide when to quit)

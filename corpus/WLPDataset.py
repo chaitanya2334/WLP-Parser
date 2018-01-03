@@ -18,7 +18,7 @@ import re
 from torch.utils import data
 
 import config as cfg
-from preprocessing.feature_engineering import features
+from preprocessing.feature_engineering import features, rel_features
 from preprocessing.feature_engineering.datasets import EntityWindow, RelationWindow
 import pandas as pd
 
@@ -28,7 +28,6 @@ from builtins import any as b_any
 
 import numpy as np
 
-# TODO fix corpus folder's structure and then improve this class
 from corpus.TextFile import TextFile
 from preprocessing.text_processing import gen_list2id_dict
 import pprint
@@ -156,31 +155,42 @@ class Features(object):
         self.encoder = OneHotEncoder()
         self.feats_used = features
         self.df = dataframe
+        self.char_cols = None
+        self.unique_ids = None
 
         # only the columns in df are used to generate one hot vectors
         if self.feats_used:
             self.filter_by_features(self.feats_used)
 
         # convert strings inside dataframe into numbers/indexes
-        self.factorize()
+        self.factorize_functional()
 
         # convert those indexes into one hot vector
         self.gen_onehotvector()
 
     def filter_by_features(self, feats):
         columns = self.df.columns.values
-        self.df = self.df[[j for i in feats for j in columns if i in j]]
+        self.df = self.df[[j for i in feats for j in columns if i == j[2:]]]
+
+    def factorize_functional(self):
+        col_names = list(self.df)
+        for col in col_names:
+            self.df[col] = self.df[col].astype('category', copy=False)
+
+        cat_columns = self.df.select_dtypes(['category']).columns
+        self.df[cat_columns] = self.df[cat_columns].apply(lambda x: x.cat.codes)
 
     def factorize(self):
         self.df = self.df.fillna(0)
-        print(tabulate(self.df[:10], headers='keys', tablefmt='psql'))
-        char_cols = self.df.dtypes.pipe(lambda x: x[x == 'object']).index
-        print(char_cols)
-        unique_ids = dict.fromkeys(char_cols)
-        for c in char_cols:
-            self.df[c], unique_ids[c] = pd.factorize(self.df[c])
+        self.char_cols = self.df.dtypes.pipe(lambda x: x[x == 'object']).index
+        self.unique_ids = dict.fromkeys(self.char_cols)
+        for c in self.char_cols:
+            self.df[c], self.unique_ids[c] = pd.factorize(self.df[c])
 
-        print(unique_ids)
+    def print_stuff(self):
+        print(tabulate(self.df[:10], headers='keys', tablefmt='psql'))
+        print(self.char_cols)
+        print(self.unique_ids)
 
     def gen_onehotvector(self):
         self.encoder.fit(self.df.as_matrix())
@@ -192,9 +202,13 @@ class Features(object):
         else:
             return self.encoder.transform(self.df[item].as_matrix())
 
+    def __len__(self):
+        return self.df.shape[0]
+
 
 class WLPDataset(object):
-    def __init__(self, gen_feat=False, min_wcount=1, shuffle_once=True, lowercase=False, replace_digits=False):
+    def __init__(self, prep_emb=True, gen_rel_feat=False, gen_ent_feat=False, min_wcount=1, shuffle_once=True,
+                 lowercase=False, replace_digits=False):
 
         self.lowercase = lowercase
         self.replace_digits = replace_digits
@@ -206,10 +220,12 @@ class WLPDataset(object):
         print("Using GENIA POS TAGGER")
         self.protocols = self.read_protocols(genia=genia, gen_features=True, dir_path=cfg.ARTICLES_FOLDERPATH)
 
-        # not used... TODO use.
+        # not used... TODO (for cleanup phase) use.
         # self.ent_features = Features(ent_enc, ent_df)
 
         self.tag_idx = self.make_bio_dict(cfg.LABELS)
+        self.rel_label_idx = {k: v for v, k in enumerate(cfg.RELATIONS)}
+        self.rel_label_idx[cfg.NEG_REL_LABEL] = len(self.rel_label_idx)
         # self.tokens2d, self.pnos = self.__gen_data(replace_digit=cfg.REPLACE_DIGITS)
 
         # self.verify_tokens(self.tokens2d)
@@ -217,16 +233,20 @@ class WLPDataset(object):
         self.train = None
         self.dev = None
         self.test = None
-        self.embedding_matrix = self.prepare_embeddings()
+        if prep_emb:
+            self.embedding_matrix = self.prepare_embeddings()
         self.is_oov = dict()
 
-        if gen_feat:
-            print("Collecting all the Features...")
+        if gen_ent_feat:
+            print("Collecting all the EntityFeatureGroup Features...")
             self.feat_list = features.create_features(self.protocols)
             print(
                 "Loading windows with features {0} ...".format([type(feature).__name__ for feature in self.feat_list]))
-
             self.enc, self.f_df = self.__gen_all_ent_features(do_dep=False)
+
+        if gen_rel_feat:
+            print("Collecting all the relation features ...")
+            self.rel_feat_list = rel_features.create_features(self.protocols)
             self.rel_df = self.__gen_all_rel_features()
             self.full_rel_features = Features(self.rel_df)
 
@@ -290,7 +310,7 @@ class WLPDataset(object):
             word_index['<s>'] = 1
             word_index['</s>'] = 2
 
-        # in essence word_index is a list of words in the vocabulary, along with its id. Words seen in text
+        # in essence word_index is a list of words in the vocabulary, along with its id. WordFeatureGroup seen in text
         # that are not in word_index will be given cfg.UNK's id.
         return word_index
 
@@ -401,26 +421,26 @@ class WLPDataset(object):
         return differences
 
     def __gen_all_rel_features(self):
-        i = 0
-        p_cut_list = [i]
         mega_list = []
 
         for p in tqdm(self.protocols):
-            f_dicts = self.__gen_single_rel_feature(p.links)
+            f_dicts = self.__gen_single_rel_feature(p.relations)
             mega_list.extend(f_dicts)
-            i += len(p.links)
-            p_cut_list.append(i)
 
         mega_df = pd.DataFrame(mega_list)
 
+        print(list(mega_df.columns.values))
+
+        print("mega_df shape", mega_df.shape)
+
         return mega_df
 
-    def __gen_single_rel_feature(self, links):
+    def __gen_single_rel_feature(self, relations):
         # expect all information to be packed in each link in links
-        window = RelationWindow(links)
-        window.apply_features(self.feat_list)
+        window = RelationWindow(relations)
+        window.apply_features(self.rel_feat_list)
         feature_dicts = []
-        for link_idx in range(len(window.links)):
+        for link_idx in range(len(window.relations)):
             # do this only if we need to get features from left and right side of the links as well.
             fvl = window.get_feature_values_list(link_idx, feat_cfg.SKIPCHAIN_LEFT, feat_cfg.SKIPCHAIN_RIGHT)
             feature_dicts.append(fvl)
