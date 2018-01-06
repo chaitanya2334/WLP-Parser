@@ -3,7 +3,7 @@ import pickle
 from collections import namedtuple, Counter
 
 import nltk
-from nltk.parse.stanford import StanfordDependencyParser
+from nltk.parse.stanford import StanfordDependencyParser, StanfordParser
 from nltk.tokenize.moses import MosesTokenizer
 from tqdm import tqdm
 
@@ -63,7 +63,6 @@ class ProtoFile:
                                             replace_digits=replace_digits)
             self.tokens2d = [[self.clean_html_tag(token) for token in token1d] for token1d in self.tokens2d]
 
-            self.relations = self.gen_relations()
             self.word_cnt = sum(len(tokens1d) for tokens1d in self.tokens2d)
             self.f_df = None
             if gen_features:
@@ -71,10 +70,14 @@ class ProtoFile:
                     self.pos_tags = self.__gen_pos_genia(genia)
                 else:
                     self.pos_tags = self.__gen_pos_stanford()
+
                 self.conll_deps = self.__gen_dep()
+                self.parse_trees = self.__gen_parse_trees()
 
             if to_filter:
                 self.filter()
+
+            self.relations = self.gen_relations()
 
     @staticmethod
     def clean_html_tag(token):
@@ -102,6 +105,23 @@ class ProtoFile:
 
     def get_deps(self):
         return [nltk.DependencyGraph(conll_dep, top_relation_label='root') for conll_dep in self.conll_deps]
+
+    def __gen_parse_trees(self):
+        p_cache = os.path.join(cfg.PARSE_PICKLE_DIR, self.protocol_name + '.p')
+        try:
+            parse_trees = pickle.load(open(p_cache, 'rb'))
+
+        except(pickle.UnpicklingError, EOFError, FileNotFoundError):
+
+            parser = StanfordParser(path_to_jar=feat_cfg.STANFORD_PARSER_JAR,
+                                    path_to_models_jar=feat_cfg.STANFORD_PARSER_MODEL_JAR,
+                                    java_options="-mx3000m")
+            print(self.protocol_name)
+            temp_trees = list(parser.raw_parse_sents(self.lines[1:]))
+            parse_trees = [next(trees) for trees in temp_trees]
+            pickle.dump(parse_trees, open(p_cache, 'wb'))
+
+        return parse_trees
 
     def __gen_dep(self):
         d_cache = os.path.join(cfg.DEP_PICKLE_DIR, self.protocol_name + '.p')
@@ -502,13 +522,13 @@ class ProtoFile:
                 # assert [html.unescape(word) for word in link.arg1.words] == token_arg1, (link.arg1.words, token_arg1)
                 # assert [html.unescape(word) for word in link.arg2.words] == token_arg2, (link.arg2.words, token_arg2)
 
-                ret.append(Relation(self, link.l_name, sent_idx1, arg1, arg2, link.arg1, link.arg2))
+                ret.append(Relation(self, link.l_name, sent_idx1, self.parse_trees[sent_idx1], arg1, arg2, link.arg1, link.arg2))
 
         for arg1, arg2 in tqdm(arg_perm, desc="arg_perm " + self.protocol_name):
             sent_idx1, arg1_idx = self.get_token_idx(arg1)
             sent_idx2, arg2_idx = self.get_token_idx(arg2)
             if sent_idx1 == sent_idx2:
-                ret.append(Relation(self, 'O', sent_idx1, arg1_idx, arg2_idx, arg1, arg2))
+                ret.append(Relation(self, 'O', sent_idx1, self.parse_trees[sent_idx1], arg1_idx, arg2_idx, arg1, arg2))
 
         return ret
 
@@ -541,7 +561,7 @@ class ProtoFile:
 
 
 class Relation(object):
-    def __init__(self, protocol, l_name, sent_idx, arg1, arg2, arg1_tag, arg2_tag):
+    def __init__(self, protocol, l_name, sent_idx, sent_parse_tree, arg1, arg2, arg1_tag, arg2_tag):
 
         """
 
@@ -559,6 +579,7 @@ class Relation(object):
         self.label = l_name
         self.arg1_tag = arg1_tag
         self.arg2_tag = arg2_tag
+        self.parse_tree = sent_parse_tree
 
         self.feature_values = None
 

@@ -1,4 +1,4 @@
-from nltk import ParentedTree
+from nltk import ParentedTree, Tree
 
 from corpus.ProtoFile import Relation
 from preprocessing.feature_engineering.datasets import RelationWindow
@@ -15,7 +15,8 @@ class ParseFeatureGroup(object):
 
         for rel in window.relations:
             assert isinstance(rel, Relation)
-            result.append([self.cphbnull(rel),  # combination of mention entity types
+            result.append([self.ptp(rel),  # combination of mention entity types
+                           self.ptph(rel),
                            ])
 
         # print("done")
@@ -39,10 +40,17 @@ class ParseFeatureGroup(object):
             labels.append(ptree[location[:i]].label())
         return labels
 
+    def get_idx(self, list1d, leaf_values):
+        print(leaf_values)
+        single_str = "".join(list1d)
+        leaf_index = [leaf_values.index(i) for i in leaf_values if (single_str in i or i in single_str)]
+        return leaf_index[-1]
+
     def find_path(self, ptree, text1, text2):
+        assert isinstance(ptree, Tree)
         leaf_values = ptree.leaves()
-        leaf_index1 = leaf_values.index(text1)
-        leaf_index2 = leaf_values.index(text2)
+        leaf_index1 = self.get_idx(text1, leaf_values)
+        leaf_index2 = self.get_idx(text2, leaf_values)
 
         location1 = ptree.leaf_treeposition(leaf_index1)
         location2 = ptree.leaf_treeposition(leaf_index2)
@@ -64,20 +72,19 @@ class ParseFeatureGroup(object):
 
     def ptp(self, rel):
 
-        ptree = ParentedTree.fromstring(rel.parse_tree)
-        print(ptree.pprint())
+        ptree = ParentedTree.convert(rel.parse_tree)
+        # print(ptree.pprint())
         arg1_tokens = rel.get_arg1_tokens()
         arg1_words = self.get_words(arg1_tokens)
         arg2_tokens = rel.get_arg2_tokens()
         arg2_words = self.get_words(arg2_tokens)
-
-        return "ptp={0}".format(self.find_path(ptree, arg1_words[-1], arg2_words[-1]))
+        return "ptp={0}".format(self.find_path(ptree, arg1_words, arg2_words))
 
     def ptph(self, rel):
-        ptree = ParentedTree.fromstring(rel.parse_tree)
-        print(ptree.pprint())
+        ptree = ParentedTree.convert(rel.parse_tree)
+        # print(ptree.pprint())
         arg1_tokens = rel.get_arg1_tokens()
         arg1_words = self.get_words(arg1_tokens)
         arg2_tokens = rel.get_arg2_tokens()
         arg2_words = self.get_words(arg2_tokens)
-        return "ptp={0}".format(self.find_path(ptree, arg1_words[-1], arg2_words[-1]))
+        return "ptp={0}".format(self.find_path(ptree, arg1_words, arg2_words))

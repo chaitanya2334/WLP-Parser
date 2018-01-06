@@ -16,6 +16,7 @@ from preprocessing.feature_engineering.rel_feature_groups.chunk import ChunkFeat
 from preprocessing.feature_engineering.rel_feature_groups.dep import DependencyFeatureGroup
 from preprocessing.feature_engineering.rel_feature_groups.entity import EntityFeatureGroup
 from preprocessing.feature_engineering.rel_feature_groups.overlap import OverlapFeatureGroup
+from preprocessing.feature_engineering.rel_feature_groups.parse import ParseFeatureGroup
 from preprocessing.feature_engineering.rel_feature_groups.words import WordFeatureGroup
 
 from preprocessing.feature_engineering.unigrams import Unigrams
@@ -46,6 +47,7 @@ def create_features(articles, verbose=True):
         OverlapFeatureGroup(),
         ChunkFeatureGroup(),
         DependencyFeatureGroup(),
+        ParseFeatureGroup(),
     ]
 
     return result

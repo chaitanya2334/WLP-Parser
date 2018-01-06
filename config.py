@@ -109,10 +109,11 @@ DEP_PICKLE_DIR = os.path.join(CURRENT_DIR, "results/pickles/dep_graphs")
 POS_PICKLE_DIR = os.path.join(CURRENT_DIR, "results/pickles/pos_tags")
 POS_GENIA_DIR = os.path.join(CURRENT_DIR, "results/pickles/pos_genia_tags")
 DEP_GENIA_DIR = os.path.join(CURRENT_DIR, "results/pickles/dep_genia_graphs")
+PARSE_PICKLE_DIR = os.path.join(CURRENT_DIR, "results/pickles/parse_trees")
 
 DB = os.path.join(CURRENT_DIR, "results/pickles/datasets.p")
 DB_MAXENT = os.path.join(CURRENT_DIR, "results/pickles/dataset_maxent.p")
-
+DB_MAXENT_WITH_PARSETREES = os.path.join(CURRENT_DIR, "results/pickles/dataset_maxent_parse_trees.p")
 # Number of windows to use during training (offset is COUNT_WINDOWS_TEST, i.e. test windows will
 # be loaded first)
 COUNT_WINDOWS_TRAIN = 10000
@@ -156,7 +157,8 @@ BATCH_TYPE = "multi"
 
 NEG_REL_LABEL = "0"
 
-
+# SKIP_FILES = ["/Users/chaitanyakulkarni/Work/pHd/action-sequence-labeler/simple_input/protocol_29"]
+SKIP_FILES = []
 def ver_print(string, value):
     if VERBOSE:
         print(string + ':\n {0}'.format(value))

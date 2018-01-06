@@ -69,7 +69,7 @@ def single_run(dataset, ntrain, ndev, ntest, feat):
 
 
 def main():
-    dataset = dataset_prep(loadfile=cfg.DB_MAXENT)
+    dataset = dataset_prep(savefile=cfg.DB_MAXENT_WITH_PARSETREES)
     total = len(dataset.protocols)
 
     ntrain = int(total * .60)
@@ -81,6 +81,7 @@ def main():
     overlap_features = ['#mb', '#wb']
     chunk_features = ['cphbnull', 'cphbfl', 'cphbf', 'cphbl', 'cphbo', 'cphbm1f', 'cphbm1l', 'cpham2f', 'cpham2l']
     dep_features = ['et1dw1', 'et2dw2', 'h1dw1', 'h2dw2', 'et12SameNP', 'et12SamePP', 'et12SameVP']
+    parse_features = ['ptp', 'ptph']
 
     ablation = [
         ent_features + overlap_features + chunk_features + dep_features,  # FULL
@@ -90,11 +91,13 @@ def main():
         word_features + ent_features + overlap_features + chunk_features,  # -dep
     ]
 
-    addition = [word_features,
-                word_features + ent_features,
-                word_features + ent_features + overlap_features,
-                word_features + ent_features + overlap_features + chunk_features,
-                word_features + ent_features + overlap_features + chunk_features + dep_features,
+    addition = [
+                #word_features,
+                #word_features + ent_features,
+                #word_features + ent_features + overlap_features,
+                #word_features + ent_features + overlap_features + chunk_features,
+                #word_features + ent_features + overlap_features + chunk_features + dep_features,
+                word_features + ent_features + overlap_features + chunk_features + dep_features + parse_features,
                 ]
     for feat in addition:
         single_run(dataset, ntrain, ndev, ntest, feat)

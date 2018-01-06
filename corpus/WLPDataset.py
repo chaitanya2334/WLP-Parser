@@ -218,7 +218,7 @@ class WLPDataset(object):
         self.min_wcount = min_wcount
         genia = GeniaTagger(feat_cfg.GENIA_TAGGER_FILEPATH)
         print("Using GENIA POS TAGGER")
-        self.protocols = self.read_protocols(genia=genia, gen_features=True, dir_path=cfg.ARTICLES_FOLDERPATH)
+        self.protocols = self.read_protocols(skip_files=cfg.SKIP_FILES, genia=genia, gen_features=True, dir_path=cfg.ARTICLES_FOLDERPATH)
 
         # not used... TODO (for cleanup phase) use.
         # self.ent_features = Features(ent_enc, ent_df)
@@ -543,7 +543,7 @@ class WLPDataset(object):
         filenames = self.__from_dir(dir_path, extension="ann")
         return filenames
 
-    def read_protocols(self, gen_features, genia=None, dir_path=None, filenames=None):
+    def read_protocols(self, gen_features, skip_files, genia=None, dir_path=None, filenames=None):
         if dir_path is None and filenames is None:
             raise ValueError("Both dir path and filenames are None")
 
@@ -551,6 +551,11 @@ class WLPDataset(object):
             filenames = self.__from_dir(dir_path, extension="ann")
         if cfg.FILTER_ALL_NEG:
             print("FILTERING BAD SENTENCES")
+
+        if skip_files:
+            print(filenames)
+            filenames = [filename for filename in filenames if filename not in skip_files]
+
         articles = [ProtoFile(filename, genia, gen_features, self.lowercase, self.replace_digits, cfg.FILTER_ALL_NEG)
                     for filename in tqdm(filenames)]
 
