@@ -81,7 +81,7 @@ def main():
     overlap_features = ['#mb', '#wb']
     chunk_features = ['cphbnull', 'cphbfl', 'cphbf', 'cphbl', 'cphbo', 'cphbm1f', 'cphbm1l', 'cpham2f', 'cpham2l']
     dep_features = ['et1dw1', 'et2dw2', 'h1dw1', 'h2dw2', 'et12SameNP', 'et12SamePP', 'et12SameVP']
-    parse_features = ['ptp', 'ptph']
+    parse_features = ['ptp']
 
     ablation = [
         ent_features + overlap_features + chunk_features + dep_features,  # FULL

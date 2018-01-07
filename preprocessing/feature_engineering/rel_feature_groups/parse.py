@@ -41,10 +41,12 @@ class ParseFeatureGroup(object):
         return labels
 
     def get_idx(self, list1d, leaf_values):
-        print(leaf_values)
-        single_str = "".join(list1d)
-        leaf_index = [leaf_values.index(i) for i in leaf_values if (single_str in i or i in single_str)]
-        return leaf_index[-1]
+        try:
+            single_str = "".join(list1d)
+            leaf_index = [leaf_values.index(i) for i in leaf_values if (single_str in i or i in single_str)]
+            return leaf_index[-1]
+        except IndexError:
+            return 0
 
     def find_path(self, ptree, text1, text2):
         assert isinstance(ptree, Tree)
