@@ -64,14 +64,14 @@ def train_a_epoch(name, data, tag_idx, is_oov, model, optimizer, seq_criterion, 
         np.set_printoptions(threshold=np.nan)
 
         if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, seq_lengths, emb, char_emb = model(x_var, c_var, pos_var)
+            lm_f_out, lm_b_out, seq_out, seq_lengths, emb, char_emb = model(x_var, c_var)
             unrolled_x_var = list(chain.from_iterable(x_var))
 
             not_oov_seq = [-1 if is_oov[idx] else 1 for idx in unrolled_x_var]
             char_att_loss = att_loss(emb.detach(), char_emb, Variable(torch.cuda.LongTensor(not_oov_seq))) / batch_size
 
         else:
-            lm_f_out, lm_b_out, seq_out, seq_lengths = model(x_var, c_var, pos_var)
+            lm_f_out, lm_b_out, seq_out, seq_lengths = model(x_var, c_var)
 
         logger.debug("lm_f_out : {0}".format(lm_f_out))
         logger.debug("lm_b_out : {0}".format(lm_b_out))
@@ -248,9 +248,9 @@ def test(name, data, tag_idx, model):
         x_var, c_var, pos_var, y_var, lm_X = to_variables(X=X, C=C, POS=POS, Y=Y)
 
         if cfg.CHAR_LEVEL == "Attention":
-            lm_f_out, lm_b_out, seq_out, seq_lengths, emb, char_emb = model(x_var, c_var, pos_var)
+            lm_f_out, lm_b_out, seq_out, seq_lengths, emb, char_emb = model(x_var, c_var)
         else:
-            lm_f_out, lm_b_out, seq_out, seq_lengths = model(x_var, c_var, pos_var)
+            lm_f_out, lm_b_out, seq_out, seq_lengths = model(x_var, c_var)
 
         pred = argmax(seq_out)
         preds = roll(pred, seq_lengths)
@@ -266,37 +266,6 @@ def test(name, data, tag_idx, model):
     return full_eval, only_ents_eval, pred_list, true_list
 
 
-# pred and true are lists of numpy arrays. each numpy array represents a sample
-def fscore(pred, true):
-    assert len(pred) == len(true)
-    tp, tn, fn, fp = (0,) * 4
-
-    for p_np, t_np in zip(pred, true):
-        p_l, t_l = p_np.tolist(), t_np.tolist()
-
-        for p, t in zip(p_l, t_l):
-            if p == t == 0:
-                tn += 1
-
-            elif p == t == 1:
-                tp += 1
-
-            elif p == 0 and t == 1:
-                fn += 1
-
-            elif p == 1 and t == 0:
-                fp += 1
-
-    recall = tp / (tp + fn)
-    precision = tp / (tp + fp)
-    fs = (2 * precision * recall) / (precision + recall)
-    print("tp={0}, tn={1}, fn={2}, fp={3}".format(tp, tn, fn, fp))
-    print("total = {0}".format(tp + tn + fn + fp))
-    print("recall = {0}/{1} = {2}".format(tp, tp + fn, recall))
-    print("precision = {0}/{1} = {2}".format(tp, tp + fp, precision))
-    print("fscore = {0}/{1} = {2}".format(2 * precision * recall, precision + recall, fs))
-
-
 def dataset_prep(loadfile=None, savefile=None):
     start_time = time.time()
 
@@ -306,7 +275,7 @@ def dataset_prep(loadfile=None, savefile=None):
         corpus.gen_data(cfg.PER)
     else:
         print("Loading Data ...")
-        corpus = WLPDataset(gen_feat=True, min_wcount=cfg.MIN_WORD_COUNT,
+        corpus = WLPDataset(gen_ent_feat=True, gen_rel_feat=True, min_wcount=cfg.MIN_WORD_COUNT,
                             lowercase=cfg.LOWERCASE, replace_digits=cfg.REPLACE_DIGITS)
         corpus.gen_data(cfg.PER)
 

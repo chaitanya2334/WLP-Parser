@@ -52,6 +52,7 @@ class BratFile(object):
             if end_of_chunk(tag, next_tag, label, next_label):
 
                 if label != ignore_label:
+                    print(label)
                     ann.write('T' + str(tag_id) + '\t' +
                               label + ' ' + str(start) + ' ' + str(end) + '\t' +
                               " ".join(word_span) + '\n')
@@ -180,6 +181,20 @@ class Writer(object):
                     self.writer(sent_words, true_labels, pred_labels, pno, ignore_label)
             else:
                 self.writer(sent_words, true_labels, pred_labels, pno, ignore_label)
+
+    def gen_one_file(self, sents, labels, path, pno, ignore_label="O"):
+        labels = self.convert_2_text(labels)
+        brat_file = BratFile(path, pno)
+        for sent, labels in zip(sents, labels):
+            sent_words = sent
+            assert len(sent_words) == len(labels), \
+                "Sentence data not of equal length. " \
+                "({0})sent_words={1}, ({2})sent_labels={3}".format(len(sent_words), sent_words,
+                                                                   len(labels), labels)
+
+            brat_file.writer(sent_words, labels, pno, ignore_label)
+
+            # appends a line in txt and also tags words in that line.
 
     def convert_2_text(self, list2d):
         return [[self.id2label[idx] for idx in list1d] for list1d in list2d]

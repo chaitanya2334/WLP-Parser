@@ -483,8 +483,18 @@ class ProtoFile:
 
         return sent_idx, (s_idx, e_idx)
 
-    # based on the assumption that a link is always between two arguments, both being in the same sentence.
     def gen_relations(self):
+        r_cache = os.path.join(cfg.REL_PICKLE_DIR, self.protocol_name + '.p')
+        try:
+            relations = pickle.load(open(r_cache, 'rb'))
+        except (pickle.UnpicklingError, EOFError, FileNotFoundError):
+            relations = self.__gen_relations()
+
+            pickle.dump(relations, open(r_cache, 'wb'))
+        return relations
+
+    # based on the assumption that a link is always between two arguments, both being in the same sentence.
+    def __gen_relations(self):
         ret = []
         arg_perm = list(it.permutations(self.tags, 2))
 

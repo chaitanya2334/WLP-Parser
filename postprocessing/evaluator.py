@@ -12,7 +12,8 @@ import config as cfg
 
 
 class Evaluator(object):
-    def __init__(self, name,  main_label_ids, main_label_name, to_skip_tags=False, skip_label=None, label2id=None, conll_eval=False):
+    def __init__(self, name, main_label_ids, main_label_name, to_skip_tags=True, skip_label=None, label2id=None,
+                 conll_eval=False):
         # assuming that labels are either B, I, or O only.
         # main_label_ids are ids that will be converted to 1. ( that is the ids for B and I )
         if label2id is None:
@@ -36,7 +37,6 @@ class Evaluator(object):
 
         if skip_label:
             self.skip_tags += [label2id[label] for label in skip_label]
-
 
         if self.label2id is not None:
             self.id2label = collections.OrderedDict()
@@ -73,7 +73,7 @@ class Evaluator(object):
         self.conll_format.append("")
 
     def append_data_rel_classifier(self, cost, preds, trues):
-        assert len(preds) == len(trues), "pred list and true list are not of same length: {0}, {1}".\
+        assert len(preds) == len(trues), "pred list and true list are not of same length: {0}, {1}". \
             format(len(preds), len(trues))
         self.total_samples += 1
         self.cost_sum += cost
@@ -151,7 +151,7 @@ class Evaluator(object):
     def print_results(self):
         for key in self.results:
             if key == 'label_table':
-                print(tabulate([('Label', 'Precision', 'Recall', 'Fscore', 'Support')]+self.results[key],
+                print(tabulate([('Label', 'Precision', 'Recall', 'Fscore', 'Support')] + self.results[key],
                                headers="firstrow",
                                tablefmt='psql'))
             else:

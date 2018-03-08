@@ -44,7 +44,6 @@ def extract_data(start, end, dataset, feat):
     l_end = sum([len(p.relations) for p in dataset.protocols[:end]])
     x = x[l_start:l_end]
     print("extract_data")
-    print(x.A.shape, l_end, l_start, l_end - l_start)
     links = list(chain.from_iterable([p.relations for p in dataset.protocols]))
     y = to_idx(dataset, links[l_start:l_end])
 

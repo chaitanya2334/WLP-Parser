@@ -1,0 +1,25 @@
+SENT_START : "<s>"
+
+SENT_END : "</s>"
+
+WORD_START : "<w>"
+
+WORD_END : "</w>"
+
+UNK : "<unk>"
+
+BATCH_SIZE : 2
+
+LM_VOCAB_SIZE : 7500
+
+CHAR_LEVEL : "input"
+
+BRAT_SAVE_PATH : "results/brat_results/Demo"
+
+CONF_DIR : "results/brat_results/confs"
+
+MODEL_SAVE_PATH : "results/models/LSTM.m"
+
+CORPUS_FILE : "results/pickles/datasets.p"
+
+SAMPLE_PROTOCOL_FILE : "simple_input/protocol_3.txt"

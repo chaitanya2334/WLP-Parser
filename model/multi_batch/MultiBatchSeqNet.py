@@ -189,7 +189,7 @@ class MultiBatchSeqNet(nn.Module):
 
         return pdded_out, hidden_state
 
-    def forward(self, sent_idx_seq, char_idx_seq, pos):
+    def forward(self, sent_idx_seq, char_idx_seq):
         cfg.ver_print("Sent Index sequence", sent_idx_seq)
         padded_seq, seq_lengths = self.pad(sent_idx_seq)
         padded_seq = Variable(torch.LongTensor(padded_seq)).cuda()
