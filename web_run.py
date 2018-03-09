@@ -76,22 +76,15 @@ def test(name, data, tag_idx, model, lm_vocab_size, char_level):
     return sents, pred_list
 
 
-def inference(p_txt, cfg):
+def main(p_txt, cfg):
+    corpus, the_model = load_model_and_corpus(cfg)
+    inference(the_model, corpus, p_txt, cfg)
+
+
+def load_model_and_corpus(cfg):
     model_save_path = cfg['MODEL_SAVE_PATH']
     print("Loading Dataset ...")
     corpus = pickle.load(open(cfg["CORPUS_FILE"], "rb"))
-    dataset = InferenceDataset(p_txt=p_txt,
-                               word_index=corpus.word_index,
-                               char_index=corpus.char_index,
-                               is_oov=corpus.is_oov,
-                               sent_start=cfg['SENT_START'],
-                               sent_end=cfg['SENT_END'],
-                               word_start=cfg['WORD_START'],
-                               word_end=cfg['WORD_END'],
-                               unk=cfg['UNK'])
-
-    data_loader = DataLoader(dataset, batch_size=cfg['BATCH_SIZE'], num_workers=8, collate_fn=multi_batchify)
-
     print("Loading Model ...")
     # init model
     the_model = MultiBatchSeqNet(emb_mat=corpus.embedding_matrix,
@@ -103,16 +96,28 @@ def inference(p_txt, cfg):
                                  use_cuda=False,
                                  dep_rel_feat="No",
                                  dep_word_feat="No")
-    # Turn on cuda
-    # the_model = the_model.cuda()
-    the_model.load_state_dict(torch.load(model_save_path, map_location=lambda storage, loc: storage))
 
+    the_model.load_state_dict(torch.load(model_save_path, map_location=lambda storage, loc: storage))
+    return corpus, the_model
+
+
+def inference(the_model, corpus, p_txt, cfg):
+    dataset = InferenceDataset(p_txt=p_txt,
+                               word_index=corpus.word_index,
+                               char_index=corpus.char_index,
+                               is_oov=corpus.is_oov,
+                               sent_start=cfg['SENT_START'],
+                               sent_end=cfg['SENT_END'],
+                               word_start=cfg['WORD_START'],
+                               word_end=cfg['WORD_END'],
+                               unk=cfg['UNK'])
+
+    data_loader = DataLoader(dataset, batch_size=cfg['BATCH_SIZE'], num_workers=8, collate_fn=multi_batchify)
     print("Testing ...")
     sents, pred_list = test("test", data_loader, corpus.tag_idx, the_model, cfg['LM_VOCAB_SIZE'], cfg['CHAR_LEVEL'])
 
     brat_writer = Writer(cfg['CONF_DIR'], cfg['BRAT_SAVE_PATH'], "full_out", corpus.tag_idx)
 
-    print(sents, pred_list)
     sents = dataset.undo_sort(sents)
     pred_list = dataset.undo_sort(pred_list)
     brat_writer.gen_one_file(sents, pred_list, cfg['BRAT_SAVE_PATH'], "brat")
@@ -137,4 +142,4 @@ if __name__ == '__main__':
 
     with open(yaml_cfg['SAMPLE_PROTOCOL_FILE'], 'r') as p_f:
         p_text = p_f.read()
-    inference(p_text, yaml_cfg)
+    main(p_text, yaml_cfg)
