@@ -148,7 +148,7 @@ SCRIPT_DIR = os.path.join(CURRENT_DIR, "scripts/jobs")
 
 DB_200_WITH_FEATURES = os.path.join(CURRENT_DIR, "200_dataset_with_features.p")
 
-TRAIN_WORD_EMB = False
+TRAIN_WORD_EMB = "pre_and_post"
 
 VIS_SAVE_DIR = os.path.join(CURRENT_DIR, "visualization/results")
 

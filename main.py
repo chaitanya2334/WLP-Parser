@@ -156,13 +156,24 @@ def plot_curve(x, y1, y2, xlabel, ylabel, title, savefile):
     plt.pause(0.05)
 
 
-def build_model(train_dataset, dev_dataset, test_dataset,
-                collate_fn, tag_idx, is_oov, embedding_matrix, model_save_path, plot_save_path):
+def build_model(train_dataset,
+                dev_dataset,
+                test_dataset,
+                collate_fn,
+                tag_idx,
+                is_oov,
+                embedding_matrix,
+                model_save_path,
+                plot_save_path):
     # init model
-    model = MultiBatchSeqNet(embedding_matrix, batch_size=cfg.BATCH_SIZE, isCrossEnt=False, char_level=cfg.CHAR_LEVEL,
+    model = MultiBatchSeqNet(embedding_matrix,
+                             batch_size=cfg.BATCH_SIZE,
+                             isCrossEnt=False,
+                             char_level=cfg.CHAR_LEVEL,
                              pos_feat=cfg.POS_FEATURE,
-                             dep_rel_feat=cfg.DEP_LABEL_FEATURE, dep_word_feat=cfg.DEP_WORD_FEATURE)
-
+                             use_cuda=True,
+                             dep_rel_feat=cfg.DEP_LABEL_FEATURE,
+                             dep_word_feat=cfg.DEP_WORD_FEATURE)
     # Turn on cuda
     model = model.cuda()
 
@@ -192,33 +203,61 @@ def build_model(train_dataset, dev_dataset, test_dataset,
         print('-' * 40)
 
         random.seed(epoch)
-        train_loader = DataLoader(train_dataset, batch_size=cfg.BATCH_SIZE, shuffle=cfg.RANDOM_TRAIN,
-                                  num_workers=28, collate_fn=collate_fn)
+        train_loader = DataLoader(train_dataset,
+                                  batch_size=cfg.BATCH_SIZE,
+                                  shuffle=cfg.RANDOM_TRAIN,
+                                  num_workers=28,
+                                  collate_fn=collate_fn)
 
-        train_eval, model = train_a_epoch(name="train", data=train_loader, tag_idx=tag_idx, is_oov=is_oov,
-                                          model=model, optimizer=optimizer, seq_criterion=seq_criterion,
-                                          lm_f_criterion=lm_f_criterion, lm_b_criterion=lm_b_criterion,
-                                          att_loss=att_loss, gamma=cfg.LM_GAMMA)
+        train_eval, model = train_a_epoch(name="train",
+                                          data=train_loader,
+                                          tag_idx=tag_idx,
+                                          is_oov=is_oov,
+                                          model=model,
+                                          optimizer=optimizer,
+                                          seq_criterion=seq_criterion,
+                                          lm_f_criterion=lm_f_criterion,
+                                          lm_b_criterion=lm_b_criterion,
+                                          att_loss=att_loss,
+                                          gamma=cfg.LM_GAMMA)
 
-        dev_loader = DataLoader(dev_dataset, batch_size=cfg.BATCH_SIZE, num_workers=28, collate_fn=collate_fn)
-        test_loader = DataLoader(test_dataset, batch_size=cfg.BATCH_SIZE, num_workers=28, collate_fn=collate_fn)
+        dev_loader = DataLoader(dev_dataset,
+                                batch_size=cfg.BATCH_SIZE,
+                                num_workers=28,
+                                collate_fn=collate_fn)
+
+        test_loader = DataLoader(test_dataset,
+                                 batch_size=cfg.BATCH_SIZE,
+                                 num_workers=28,
+                                 collate_fn=collate_fn)
 
         dev_eval, _, _, _ = test("dev", dev_loader, tag_idx, model)
         test_eval, _, _, _ = test("test", test_loader, tag_idx, model)
 
         dev_eval.verify_results()
         test_eval.verify_results()
+
         dev_eval_history.append(dev_eval.results[cfg.BEST_MODEL_SELECTOR[0]])
         test_eval_history.append(test_eval.results['test_conll_f'])
-        plot_curve(epoch, dev_eval_history, test_eval_history, "epochs", "fscore", "epoch learning curve",
+
+        plot_curve(epoch,
+                   dev_eval_history,
+                   test_eval_history,
+                   "epochs",
+                   "fscore",
+                   "epoch learning curve",
                    plot_save_path)
+
         pickle.dump((dev_eval_history, test_eval_history), open("plot_data.p", "wb"))
+
         # pick the best epoch
-        if epoch < cfg.MIN_EPOCH_IMP or (dev_eval.results[cfg.BEST_MODEL_SELECTOR[0]] > best_res_val_0):
+        if epoch < cfg.MIN_EPOCH_IMP or \
+                (dev_eval.results[cfg.BEST_MODEL_SELECTOR[0]] > best_res_val_0):
             best_epoch = epoch
             best_res_val_0 = dev_eval.results[cfg.BEST_MODEL_SELECTOR[0]]
 
-            torch.save(model, model_save_path)
+            torch.save(model.state_dict(), model_save_path)
+            # torch.save(model, model_save_path)
 
         print("current dev micro_score: {0}".format(dev_eval.results[cfg.BEST_MODEL_SELECTOR[0]]))
         print("current dev macro_score: {0}".format(dev_eval.results[cfg.BEST_MODEL_SELECTOR[1]]))
@@ -230,7 +269,7 @@ def build_model(train_dataset, dev_dataset, test_dataset,
             break
     print("Loading Best Model ...")
 
-    model = torch.load(model_save_path)
+    model.load_state_dict(torch.load(model_save_path))
     return model
 
 
@@ -328,11 +367,28 @@ def single_run(corpus, index, title, overwrite, only_test=False):
     model_save_path = os.path.join(cfg.MODEL_SAVE_DIR, title + ".m")
     plot_save_path = os.path.join(cfg.PLOT_SAVE_DIR, title + ".png")
     if not only_test:
-        the_model = build_model(corpus.train, corpus.dev, corpus.test,
-                                collate_fn, corpus.tag_idx, corpus.is_oov, corpus.embedding_matrix, model_save_path,
-                                plot_save_path)
+        the_model = build_model(train_dataset=corpus.train,
+                                dev_dataset=corpus.dev,
+                                test_dataset=corpus.test,
+                                collate_fn=collate_fn,
+                                tag_idx=corpus.tag_idx,
+                                is_oov=corpus.is_oov,
+                                embedding_matrix=corpus.embedding_matrix,
+                                model_save_path=model_save_path,
+                                plot_save_path=plot_save_path)
     else:
-        the_model = torch.load(model_save_path)
+        # init model
+        the_model = MultiBatchSeqNet(emb_mat=corpus.embedding_matrix,
+                                     batch_size=cfg.BATCH_SIZE,
+                                     isCrossEnt=False,
+                                     char_level=cfg.CHAR_LEVEL,
+                                     pos_feat=cfg.POS_FEATURE,
+                                     use_cuda=True,
+                                     dep_rel_feat=cfg.DEP_LABEL_FEATURE,
+                                     dep_word_feat=cfg.DEP_WORD_FEATURE)
+        # Turn on cuda
+        the_model = the_model.cuda()
+        the_model.load_state_dict(torch.load(model_save_path))
 
     print("Testing ...")
     test_loader = DataLoader(corpus.test, batch_size=cfg.BATCH_SIZE, num_workers=28, collate_fn=collate_fn)

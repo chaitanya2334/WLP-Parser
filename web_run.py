@@ -11,6 +11,7 @@ import numpy as np
 from corpus.BratWriter import Writer, BratFile
 from corpus.InferenceDataset import InferenceDataset
 from corpus.WLPDataset import WLPDataset
+from model.multi_batch.MultiBatchSeqNet import MultiBatchSeqNet
 
 
 def multi_batchify(samples):
@@ -92,7 +93,19 @@ def inference(p_txt, cfg):
     data_loader = DataLoader(dataset, batch_size=cfg['BATCH_SIZE'], num_workers=8, collate_fn=multi_batchify)
 
     print("Loading Model ...")
-    the_model = torch.load(model_save_path)
+    # init model
+    the_model = MultiBatchSeqNet(emb_mat=corpus.embedding_matrix,
+                                 categories=len(corpus.tag_idx.keys()) + 2,  # +2 for start and end tags of a seq
+                                 batch_size=cfg['BATCH_SIZE'],
+                                 isCrossEnt=False,
+                                 char_level=cfg['CHAR_LEVEL'],
+                                 pos_feat="No",
+                                 use_cuda=False,
+                                 dep_rel_feat="No",
+                                 dep_word_feat="No")
+    # Turn on cuda
+    # the_model = the_model.cuda()
+    the_model.load_state_dict(torch.load(model_save_path, map_location=lambda storage, loc: storage))
 
     print("Testing ...")
     sents, pred_list = test("test", data_loader, corpus.tag_idx, the_model, cfg['LM_VOCAB_SIZE'], cfg['CHAR_LEVEL'])

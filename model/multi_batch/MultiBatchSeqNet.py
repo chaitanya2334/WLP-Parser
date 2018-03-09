@@ -16,9 +16,10 @@ from model.utils import to_scalar, TimeDistributed
 
 
 class MultiBatchSeqNet(nn.Module):
-    def __init__(self, emb_mat, batch_size, isCrossEnt=True, char_level="None", pos_feat="No", dep_rel_feat="No", dep_word_feat="No"):
+    def __init__(self, emb_mat, batch_size, isCrossEnt=True, use_cuda=False, categories=None,
+                 char_level="None", pos_feat="No", dep_rel_feat="No", dep_word_feat="No"):
         super().__init__()
-        self.emb_mat_tensor = Variable(cuda.FloatTensor(emb_mat))
+        self.emb_mat_tensor = Variable(FloatTensor(emb_mat))
         assert self.emb_mat_tensor.size(1) == cfg.EMBEDDING_DIM
         self.vocab_size = self.emb_mat_tensor.size(0)
         self.emb_dim = self.emb_mat_tensor.size(1)
@@ -26,24 +27,25 @@ class MultiBatchSeqNet(nn.Module):
         self.batch_size = batch_size
         self.num_layers = 1
         self.num_dir = 2
-        self.out_size = cfg.CATEGORIES
+        self.out_size = categories
         self.pf_dim = cfg.PF_EMBEDDING_DIM
         self.char_emb_dim = cfg.EMBEDDING_DIM
         self.pos_feat = pos_feat
         self.dep_rel_feat = dep_rel_feat
         self.dep_word_feat = dep_word_feat
         self.char_level = char_level
+        self.use_cuda = use_cuda
 
         # init embedding layer, with pre-trained embedding matrix : emb_mat
         print("word embeddings are being trained using the following strategy: {0}".format(cfg.TRAIN_WORD_EMB))
 
         if cfg.TRAIN_WORD_EMB == "pre_and_post":
             self.emb_lookup = nn.Embedding(self.vocab_size, self.emb_dim)
-            self.emb_lookup.weight = nn.Parameter(cuda.FloatTensor(emb_mat))
+            self.emb_lookup.weight = nn.Parameter(FloatTensor(emb_mat))
 
         elif cfg.TRAIN_WORD_EMB == "pre_only":
             self.emb_lookup = nn.Embedding(self.vocab_size, self.emb_dim)
-            self.emb_lookup.weight = nn.Parameter(cuda.FloatTensor(emb_mat))
+            self.emb_lookup.weight = nn.Parameter(FloatTensor(emb_mat))
             self.emb_lookup.weight.requires_grad = False
 
         elif cfg.TRAIN_WORD_EMB == "random":
@@ -117,7 +119,10 @@ class MultiBatchSeqNet(nn.Module):
         h0_encoder_bi = Variable(zeros(self.num_layers * self.num_dir, batch_size, self.hidden_size))
         c0_encoder_bi = Variable(zeros(self.num_layers * self.num_dir, batch_size, self.hidden_size))
 
-        self.hidden_state = (h0_encoder_bi.cuda(), c0_encoder_bi.cuda())
+        if self.use_cuda:
+            self.hidden_state = (h0_encoder_bi.cuda(), c0_encoder_bi.cuda())
+        else:
+            self.hidden_state = (h0_encoder_bi, c0_encoder_bi)
 
     def pad(self, minibatch, pad_first=False, fix_length=None, include_lengths=True):
         """Pad a batch of examples.
@@ -157,8 +162,7 @@ class MultiBatchSeqNet(nn.Module):
 
         return padded
 
-    @staticmethod
-    def unpad(padded, seq_lengths, skip_start=0, skip_end=0):
+    def unpad(self, padded, seq_lengths, skip_start=0, skip_end=0):
         # for every sequence in the batch, skip from the beginning skip_start no. of elements
         # same goes for skip_end, except from the end of every sequence.
         max_seq_len = padded.size(1)
@@ -166,7 +170,11 @@ class MultiBatchSeqNet(nn.Module):
                 for seq_length in seq_lengths]
 
         mask = list(chain.from_iterable(mask))
-        mask_tensor = torch.ByteTensor(mask).cuda()
+        if self.use_cuda:
+            mask_tensor = torch.ByteTensor(mask).cuda()
+        else:
+            mask_tensor = torch.ByteTensor(mask)
+
         index = torch.nonzero(mask_tensor)
         # padded of size (batch_size x seq_len x emb_dim)
         index = index.squeeze(dim=1)
@@ -192,7 +200,10 @@ class MultiBatchSeqNet(nn.Module):
     def forward(self, sent_idx_seq, char_idx_seq):
         cfg.ver_print("Sent Index sequence", sent_idx_seq)
         padded_seq, seq_lengths = self.pad(sent_idx_seq)
-        padded_seq = Variable(torch.LongTensor(padded_seq)).cuda()
+        if self.use_cuda:
+            padded_seq = Variable(torch.LongTensor(padded_seq)).cuda()
+        else:
+            padded_seq = Variable(torch.LongTensor(padded_seq))
 
         emb = self.emb_lookup(padded_seq)
 
@@ -210,7 +221,7 @@ class MultiBatchSeqNet(nn.Module):
 
         if self.pos_feat == "Yes":
             padded_pos, seq_len_pos = self.pad(pos)
-            padded_pos = Variable(torch.LongTensor(padded_pos)).cuda()
+            padded_pos = Variable(torch.LongTensor(padded_pos))
             pos_emb = self.pos_emb(padded_pos)
             inp = cat([inp, pos_emb], dim=2)
 
