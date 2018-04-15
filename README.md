@@ -5,7 +5,7 @@ demostrate the utility of our dataset. These networks were trained using [Pytorc
 
 A more detailed description of the wet lab protocol corpus can be found in this paper:
 
-[**An Annotated Corpus for Machine Reading of Instructions in Wet Lab Protocols**](http://aclweb.org/anthology/P/P16/P16-1112.pdf)  
+[**An Annotated Corpus for Machine Reading of Instructions in Wet Lab Protocols**](http://asdf)  
 Chaitanya Kulkarni, Wei Xu, Alan Ritter, Raghu Machiraju  
 *In Proceedings of 16th Annual Conference of the North American Chapter 
 of the Association for Computational Linguistics: Human Language Technologies (NAACL-HLT, 2018)*
