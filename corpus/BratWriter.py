@@ -1,8 +1,8 @@
 import glob
-from shutil import copyfile, copy2
-
-from conlleval import start_of_chunk, end_of_chunk
 import os
+from shutil import copy2
+
+from postprocessing.conlleval import start_of_chunk, end_of_chunk
 
 
 class BratFile(object):

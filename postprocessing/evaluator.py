@@ -1,14 +1,14 @@
-import csv
-import time
 import collections
-import numpy as np
+import csv
+import os
 import sys
+import time
 
+import numpy as np
 from tabulate import tabulate
 
-import conlleval
-import os
 import config as cfg
+from postprocessing import conlleval
 
 
 class Evaluator(object):
