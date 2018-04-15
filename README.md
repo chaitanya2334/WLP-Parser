@@ -1,1 +1,1 @@
-# action-sequence-labeler
+# wlp-sequence-labeler
