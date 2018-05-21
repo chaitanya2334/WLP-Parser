@@ -5,16 +5,17 @@ demostrate the utility of our dataset. These networks were trained using [Pytorc
 
 A more detailed description of the wet lab protocol corpus can be found in this paper:
 
-[**An Annotated Corpus for Machine Reading of Instructions in Wet Lab Protocols**](http://asdf)  
+[**An Annotated Corpus for Machine Reading of Instructions in Wet Lab Protocols**](https://arxiv.org/pdf/1805.00195.pdf)  
 Chaitanya Kulkarni, Wei Xu, Alan Ritter, Raghu Machiraju  
 *In Proceedings of 16th Annual Conference of the North American Chapter 
 of the Association for Computational Linguistics: Human Language Technologies (NAACL-HLT, 2018)*
 
-Additional information regarding the action, entities and relations can be found [here](http://asdf).
+Additional information regarding the action, entities and relations can be found [here](https://arxiv.org/pdf/1805.00195.pdf).
 
-Also check out a working [demo](http://asdf) for sequence tagging and relation extraction using the methods in this repository.
+Also check out a working [demo](http://bionlp.osu.edu:5000/protocols) for sequence tagging and relation extraction using the methods in this repository.
 
 ## Usage
+[TO BE POPULATED]
 
 ## Additional References
 
