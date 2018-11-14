@@ -22,7 +22,7 @@ from preprocessing.feature_engineering.rel_feature_groups.words import WordFeatu
 from preprocessing.feature_engineering.unigrams import Unigrams
 
 
-def create_features(articles, verbose=True):
+def create_features(verbose=True):
     """This method creates all feature generators.
     The feature generators will be used to convert windows of tokens to their string features.
 
@@ -35,10 +35,6 @@ def create_features(articles, verbose=True):
         :param verbose: prints stuff if true
         :param articles: list of bit lengths that will be used as features
     """
-
-    # Load the most common unigrams. These will be used as features.
-    ug_all_top = Unigrams(articles, skip_first_n=cfg.UNIGRAMS_SKIP_FIRST_N,
-                          max_count_words=cfg.UNIGRAMS_MAX_COUNT_WORDS)
 
     # create feature generators
     result = [

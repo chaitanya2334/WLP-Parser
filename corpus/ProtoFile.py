@@ -116,9 +116,9 @@ class ProtoFile:
             parser = StanfordParser(path_to_jar=feat_cfg.STANFORD_PARSER_JAR,
                                     path_to_models_jar=feat_cfg.STANFORD_PARSER_MODEL_JAR,
                                     java_options="-mx3000m")
-            print(self.protocol_name)
             temp_trees = list(parser.raw_parse_sents(self.lines[1:]))
             parse_trees = [next(trees) for trees in temp_trees]
+            os.makedirs(os.path.dirname(p_cache), exist_ok=True)
             pickle.dump(parse_trees, open(p_cache, 'wb'))
 
         return parse_trees
@@ -139,7 +139,7 @@ class ProtoFile:
 
             # save dependency graph in conll format
             conll_deps = [next(deps).to_conll(10) for deps in dep_graphs]
-
+            os.makedirs(os.path.dirname(d_cache), exist_ok=True)
             pickle.dump(conll_deps, open(d_cache, 'wb'))
 
         return conll_deps
@@ -150,7 +150,7 @@ class ProtoFile:
             pos_tags = pickle.load(open(p_cache, 'rb'))
         except (pickle.UnpicklingError, EOFError, FileNotFoundError):
             pos_tags = pos_tagger.parse_through_file([" ".join(sent) for sent in self.sents])
-
+            os.makedirs(os.path.dirname(p_cache), exist_ok=True)
             pickle.dump(pos_tags, open(p_cache, 'wb'))
         return pos_tags
 
@@ -489,7 +489,7 @@ class ProtoFile:
             relations = pickle.load(open(r_cache, 'rb'))
         except (pickle.UnpicklingError, EOFError, FileNotFoundError):
             relations = self.__gen_relations()
-
+            os.makedirs(os.path.dirname(r_cache), exist_ok=True)
             pickle.dump(relations, open(r_cache, 'wb'))
         return relations
 

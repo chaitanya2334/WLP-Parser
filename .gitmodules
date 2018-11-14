@@ -1,0 +1,4 @@
+[submodule "WLP-Dataset"]
+	path = WLP-Dataset
+	url = git@github.com:chaitanya2334/WLP-Dataset.git
+	branch = master

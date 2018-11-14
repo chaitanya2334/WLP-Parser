@@ -151,64 +151,32 @@ class Features(object):
     converts each row of dataframe (filled with strings) into a one hot vector.
     '''
 
-    def __init__(self, dataframe, features=None):
-        self.encoder = OneHotEncoder()
-        self.feats_used = features
-        self.df = dataframe
+    def __init__(self, rel_df):
+        self.encoder = OneHotEncoder(handle_unknown='ignore')
+        self.rel_df = rel_df
         self.char_cols = None
         self.unique_ids = None
 
-        # only the columns in df are used to generate one hot vectors
-        if self.feats_used:
-            self.filter_by_features(self.feats_used)
-
-        # convert strings inside dataframe into numbers/indexes
-        self.factorize_functional()
-
-        # convert those indexes into one hot vector
-        self.gen_onehotvector()
-
-    def filter_by_features(self, feats):
-        columns = self.df.columns.values
-        self.df = self.df[[j for i in feats for j in columns if i == j[2:]]]
-
-    def factorize_functional(self):
-        col_names = list(self.df)
-        for col in col_names:
-            self.df[col] = self.df[col].astype('category', copy=False)
-
-        cat_columns = self.df.select_dtypes(['category']).columns
-        self.df[cat_columns] = self.df[cat_columns].apply(lambda x: x.cat.codes)
-
-    def factorize(self):
-        self.df = self.df.fillna(0)
-        self.char_cols = self.df.dtypes.pipe(lambda x: x[x == 'object']).index
-        self.unique_ids = dict.fromkeys(self.char_cols)
-        for c in self.char_cols:
-            self.df[c], self.unique_ids[c] = pd.factorize(self.df[c])
+    @staticmethod
+    def filter_by_features(df, feats):
+        columns = df.columns.values
+        df = df[[j for i in feats for j in columns if i == j[2:]]]
+        return df
 
     def print_stuff(self):
-        print(tabulate(self.df[:10], headers='keys', tablefmt='psql'))
-        print(self.char_cols)
-        print(self.unique_ids)
+        print(tabulate(self.rel_df[:10], headers='keys', tablefmt='psql'))
 
-    def gen_onehotvector(self):
-        self.encoder.fit(self.df.as_matrix())
-
-    def __getitem__(self, item):
-
-        if isinstance(item, tuple):
-            raise NotImplementedError("cannot be used with tuples")
-        else:
-            return self.encoder.transform(self.df[item].as_matrix())
-
-    def __len__(self):
-        return self.df.shape[0]
+    def tranform(self, df, feat):
+        # only the columns in df are used to generate one hot vectors
+        rel_df = self.filter_by_features(self.rel_df, feat)
+        self.encoder.fit(rel_df.values)
+        df = self.filter_by_features(df, feat)
+        return self.encoder.transform(df.values)
 
 
 class WLPDataset(object):
     def __init__(self, prep_emb=True, gen_rel_feat=False, gen_ent_feat=False, min_wcount=1, shuffle_once=True,
-                 lowercase=False, replace_digits=False):
+                 lowercase=False, replace_digits=False, dir_path=None):
 
         self.lowercase = lowercase
         self.replace_digits = replace_digits
@@ -218,7 +186,11 @@ class WLPDataset(object):
         self.min_wcount = min_wcount
         genia = GeniaTagger(feat_cfg.GENIA_TAGGER_FILEPATH)
         print("Using GENIA POS TAGGER")
-        self.protocols = self.read_protocols(skip_files=cfg.SKIP_FILES, genia=genia, gen_features=True, dir_path=cfg.ARTICLES_FOLDERPATH)
+        if dir_path is None:
+            dir_path = cfg.ARTICLES_FOLDERPATH
+
+        self.protocols = self.read_protocols(skip_files=cfg.SKIP_FILES, genia=genia, gen_features=True,
+                                             dir_path=dir_path)
 
         # not used... TODO (for cleanup phase) use.
         # self.ent_features = Features(ent_enc, ent_df)
@@ -245,13 +217,15 @@ class WLPDataset(object):
             self.enc, self.f_df = self.__gen_all_ent_features(do_dep=False)
 
         if gen_rel_feat:
-            print("Collecting all the relation features ...")
-            self.rel_feat_list = rel_features.create_features(self.protocols)
-            self.rel_df = self.__gen_all_rel_features()
-            self.full_rel_features = Features(self.rel_df)
+            relations = [p.relations for p in self.protocols]
+            self.rel_df = self.get_rel_fvectors(relations)
+            self.features = Features(self.rel_df)
 
-    def get_feature_vectors(self, columns):
-        return Features(self.rel_df, columns)
+    def get_rel_fvectors(self, relations):
+        print("Collecting all the relation features ...")
+        rel_feat_list = rel_features.create_features()
+        rel_df = self.__gen_all_rel_features(relations, rel_feat_list)
+        return rel_df
 
     def find_oov(self):
         is_oov = dict()
@@ -313,6 +287,20 @@ class WLPDataset(object):
         # in essence word_index is a list of words in the vocabulary, along with its id. WordFeatureGroup seen in text
         # that are not in word_index will be given cfg.UNK's id.
         return word_index
+
+    def to_idx(self, links):
+        rel_label_idx = self.rel_label_idx
+
+        return [rel_label_idx[link.label] if link.label in rel_label_idx else
+                rel_label_idx[cfg.NEG_REL_LABEL] for link in links]
+
+    def extract_rel_data(self):
+        print("total no of links in protocols:")
+        print(sum([len(p.relations) for p in self.protocols]))
+        relations = [p.relations for p in self.protocols]
+        y = self.to_idx(list(itertools.chain.from_iterable(relations)))
+
+        return self.rel_df, y
 
     def prepare_embeddings(self, load_bin=True, support_start_stop=True):
         print("Preparing Embeddings ...")
@@ -420,25 +408,24 @@ class WLPDataset(object):
 
         return differences
 
-    def __gen_all_rel_features(self):
+    def __gen_all_rel_features(self, relations, rel_feat_list):
         mega_list = []
 
-        for p in tqdm(self.protocols):
-            f_dicts = self.__gen_single_rel_feature(p.relations)
+        for rlist in tqdm(relations):
+            f_dicts = self.__gen_single_rel_feature(rlist, rel_feat_list)
             mega_list.extend(f_dicts)
 
         mega_df = pd.DataFrame(mega_list)
-
+        mega_df = mega_df.fillna("#")
         print(list(mega_df.columns.values))
-
         print("mega_df shape", mega_df.shape)
-
         return mega_df
 
-    def __gen_single_rel_feature(self, relations):
+    @staticmethod
+    def __gen_single_rel_feature(relations, rel_feat_list):
         # expect all information to be packed in each link in links
         window = RelationWindow(relations)
-        window.apply_features(self.rel_feat_list)
+        window.apply_features(rel_feat_list)
         feature_dicts = []
         for link_idx in range(len(window.relations)):
             # do this only if we need to get features from left and right side of the links as well.

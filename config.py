@@ -6,6 +6,12 @@ CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 
 ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "simple_input")
 
+TRAIN_ARTICLES_PATH = os.path.join(CURRENT_DIR, "WLP-Dataset/train")
+
+DEV_ARTICLES_PATH = os.path.join(CURRENT_DIR, "WLP-Dataset/dev")
+
+TEST_ARTICLES_PATH = os.path.join(CURRENT_DIR, "WLP-Dataset/test")
+
 PUBMED_AND_PMC_W2V_BIN = os.path.join(CURRENT_DIR, "preprocessing/PubMed-and-PMC-w2v.bin")
 
 EMBEDDING_DIM = 200
