@@ -79,7 +79,7 @@ STANFORD_POS_JAR_FILEPATH = os.path.join(STANFORD_POS_DIR, "stanford-postagger-3
 # pos tagger's directory)
 STANFORD_MODEL_FILEPATH = os.path.join(STANFORD_POS_DIR, "models/english-bidirectional-distsim.tagger")
 
-GENIA_TAGGER_FILEPATH = os.path.join(CURRENT_DIR, "preprocessing/feature_engineering/geniatagger/geniatagger")
+GENIA_TAGGER_FILEPATH = os.path.join(CURRENT_DIR, "preprocessing/feature_engineering/geniatagger-3.0.2/geniatagger")
 
 # filepath to the cache to use for the pos tagger during training of the CRF
 POS_TAGGER_CACHE_FILEPATH = os.path.join(CURRENT_DIR, "pos.cache")

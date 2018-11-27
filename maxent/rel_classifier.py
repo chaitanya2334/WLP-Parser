@@ -7,22 +7,6 @@ import config as cfg
 from corpus.WLPDataset import WLPDataset
 
 
-def dataset_prep(loadfile=None, savefile=None):
-    if loadfile:
-        print("Loading corpus ...")
-        corpus = pickle.load(open(loadfile, "rb"))
-    else:
-        print("Loading Data ...")
-        corpus = WLPDataset(gen_rel_feat=True, prep_emb=False)
-        # corpus.gen_data(cfg.PER)
-
-        if savefile:
-            print("Saving corpus and embedding matrix ...")
-            pickle.dump(corpus, open(savefile, "wb"))
-
-    return corpus
-
-
 def single_run(x_train, y_train, x_test, y_test):
     model = LogisticRegression(solver='lbfgs', multi_class='multinomial', n_jobs=8)
 
