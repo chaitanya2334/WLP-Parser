@@ -32,6 +32,8 @@ from corpus.TextFile import TextFile
 from preprocessing.text_processing import gen_list2id_dict
 import pprint
 
+from utils import download
+
 Data = namedtuple('Data', ['SENT', 'X', 'C', 'Y', 'P', 'POS'])
 
 logger = logging.getLogger(__name__)
@@ -71,7 +73,7 @@ class CustomDataset(data.Dataset):
         x = self.__gen_sent_idx_seq(sent)
         c = self.__prep_char_idx_seq(sent)
         y = [self.tag_idx['<s>']] + [self.tag_idx[label] for label in labels] + [self.tag_idx['</s>']]
-        f_pos = f['0:pos'].as_matrix()
+        f_pos = f['0:pos'].values
 
         # add pos tag for start and end tag
         f_pos = np.insert(f_pos, 0, self.pos_index['NULL'])
@@ -174,7 +176,7 @@ class Features(object):
         return self.encoder.transform(df.values)
 
 
-class WLPDataset(object):
+class WLPDataset:
     def __init__(self, prep_emb=True, gen_rel_feat=False, gen_ent_feat=False, min_wcount=1, shuffle_once=True,
                  lowercase=False, replace_digits=False, dir_path=None):
 
@@ -312,6 +314,12 @@ class WLPDataset(object):
         print("         Loading Word2Vec ...")
         if load_bin:
             print("                     Loading a Massive File ...")
+            if not os.path.isfile(cfg.PUBMED_AND_PMC_W2V_BIN):
+                url = "http://evexdb.org/pmresources/vec-space-models/PubMed-and-PMC-w2v.bin"
+                dirpath = os.path.dirname(cfg.PUBMED_AND_PMC_W2V_BIN)
+                print("Downloading Word2Vec resource ...")
+                download(url, save_filepath=cfg.PUBMED_AND_PMC_W2V_BIN)
+
             skip_gram_model = KeyedVectors.load_word2vec_format(cfg.PUBMED_AND_PMC_W2V_BIN, binary=True)
         else:
             skip_gram_model = Word2Vec(sentences=sents, size=cfg.EMBEDDING_DIM, sg=1, window=10, min_count=1,
@@ -367,19 +375,22 @@ class WLPDataset(object):
 
         return d
 
-    def gen_data(self, per, train_per=100, gen_feat_again=False):
+    def pick_protocols(self, pnames):
+        print("pnames : {}".format(pnames))
+        print("pname : {}".format(self.protocols[0].protocol_name))
+        return list(filter(lambda p: p.protocol_name in pnames, self.protocols))
 
-        ntrain, ndev, ntest = self.__split_dataset(per, self.p_cnt)
+    def gen_data(self, train_p, dev_p, test_p):
 
-        ntrain_cut = int((train_per * ntrain) / 100)
+        train_protocols = self.pick_protocols(train_p)
+        dev_protocols = self.pick_protocols(dev_p)
+        test_protocols = self.pick_protocols(test_p)
 
-        print(ntrain_cut)
-
-        self.train = CustomDataset(self.protocols[0:ntrain_cut], self.char_index, self.word_index, self.pos_ids,
+        self.train = CustomDataset(train_protocols, self.char_index, self.word_index, self.pos_ids,
                                    self.tag_idx, self.is_oov)
-        self.dev = CustomDataset(self.protocols[ntrain:ndev], self.char_index, self.word_index, self.pos_ids,
+        self.dev = CustomDataset(dev_protocols, self.char_index, self.word_index, self.pos_ids,
                                  self.tag_idx, self.is_oov)
-        self.test = CustomDataset(self.protocols[ndev:ntest], self.char_index, self.word_index, self.pos_ids,
+        self.test = CustomDataset(test_protocols, self.char_index, self.word_index, self.pos_ids,
                                   self.tag_idx, self.is_oov)
 
         print("train: \n\tno. of protocols = {0} \n\tno. of sents = {1}".format(
@@ -713,17 +724,5 @@ class WLPDataset(object):
 
     @staticmethod
     def __from_dir(folder, extension):
-        g = glob.iglob(folder + '/*.' + extension, recursive=True)
+        g = glob.iglob(folder + '/*/*.' + extension, recursive=True)
         return [os.path.splitext(f)[0] for f in g]
-
-
-if __name__ == '__main__':
-    pass
-    # corpus = WLPDataset(gen_feat=True)
-    # dep = StanfordDependencyParser(path_to_jar=feat_cfg.STANFORD_PARSER_JAR,
-    #                                path_to_models_jar=feat_cfg.STANFORD_PARSER_MODEL_JAR, java_options="-mx3000m")
-
-    # p = [[('For', 'IN'), ('each', 'DT'), ('sample', 'NN'), (',', ','), ('combine', 'VBP'), ('the', 'DT'),
-    #       ('following', 'JJ'), ('reagents', 'NNS'), ('on', 'IN'), ('ice', 'NN'), ('in', 'IN'), ('nuclease-free', 'JJ'),
-    #       ('microcentrifuge', 'NN'), ('tubes', 'NNS'), (':', ':'), ('_', 'NN')]]
-    # dep.tagged_parse_sents(p)

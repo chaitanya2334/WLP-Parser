@@ -8,6 +8,8 @@ import psutil
 import requests
 from tqdm import tqdm
 
+import utils
+
 
 class Tag(object):
     def __init__(self, t):
@@ -37,23 +39,9 @@ class GeniaTagger(object):
 
     def dl_and_make(self):
         print("Downloading genia tagger ...")
-        r = requests.get("http://www.nactem.ac.uk/tsujii/GENIA/tagger/geniatagger-3.0.2.tar.gz", stream=True)
-        total_size = int(r.headers.get('Content-length'))
-        block_size = 1024
-        pbar = tqdm(r.iter_content(chunk_size=block_size),
-                    total=total_size, unit_divisor=1024,
-                    unit='B', unit_scale=True)
+        url = "http://www.nactem.ac.uk/tsujii/GENIA/tagger/geniatagger-3.0.2.tar.gz"
 
-        with io.BytesIO() as buf:
-            for chunk in pbar:
-                buf.write(chunk)
-                buf.flush()
-                pbar.update(block_size)
-
-            buf.seek(0, 0)
-            z = tarfile.open(fileobj=buf)
-            z.extractall(os.path.dirname(self._dir_to_tagger))
-
+        utils.download(url, os.path.dirname(self._dir_to_tagger))
         subprocess.call('make',
                         cwd=self._dir_to_tagger,
                         stdin=subprocess.PIPE, stdout=subprocess.PIPE)

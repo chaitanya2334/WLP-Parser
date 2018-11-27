@@ -10,6 +10,8 @@ import requests
 from nltk.parse.stanford import StanfordDependencyParser
 from tqdm import tqdm
 
+from utils import download
+
 
 def generate_pf_mat(n):
     def gen_row(i, length):
@@ -47,24 +49,8 @@ def get_stanford_dep_parser(path_to_jar, path_to_models_jar):
             except(pickle.UnpicklingError, EOFError, FileNotFoundError, TypeError, LookupError):
                 print("Downloading Stanford Parser ...")
                 url = "https://nlp.stanford.edu/software/stanford-parser-full-2017-06-09.zip"
-                r = requests.get(url, stream=True)
-                total_size = int(r.headers.get('content-length', 0))
-                block_size = 1024
-                pbar = tqdm(r.iter_content(chunk_size=block_size),
-                            total=total_size, unit_divisor=1024,
-                            unit='B', unit_scale=True)
-                with io.BytesIO() as buf:
-                    for chunk in pbar:
-                        buf.write(chunk)
-                        buf.flush()
-                        pbar.update(block_size)
-
-                    buf.seek(0, 0)
-
-                    z = zipfile.ZipFile(buf)
-                    dirpath = os.path.dirname(os.path.dirname(path_to_jar))
-                    z.extractall(dirpath)
-                    z.close()
+                dirpath = os.path.dirname(os.path.dirname(path_to_jar))
+                download(url, dirpath)
 
                 dep = StanfordDependencyParser(path_to_jar=path_to_jar,
                                                path_to_models_jar=path_to_models_jar,

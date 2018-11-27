@@ -1,4 +1,5 @@
 import argparse
+import glob
 import random
 import os
 
@@ -178,15 +179,21 @@ def dataset_prep(loadfile=None, savefile=None):
     if loadfile:
         print("Loading corpus ...")
         corpus = pickle.load(open(loadfile, "rb"))
-        with open("file_order.txt", 'w') as f:
-            f.write("\n".join([p.filename for p in corpus.protocols]))
-            print("DONE WRITING FILENAMES")
-        corpus.gen_data(cfg.PER)
+        train_p = set([os.path.splitext(os.path.basename(f))[0] for f in glob.glob(cfg.TRAIN_ARTICLES_PATH + "/*")])
+        dev_p = set([os.path.splitext(os.path.basename(f))[0] for f in glob.glob(cfg.DEV_ARTICLES_PATH + "/*")])
+        test_p = set([os.path.splitext(os.path.basename(f))[0] for f in glob.glob(cfg.TEST_ARTICLES_PATH + "/*")])
+
+        corpus.gen_data(train_p, dev_p, test_p)
+
     else:
         print("Loading Data ...")
-        corpus = WLPDataset(gen_feat=True, min_wcount=cfg.MIN_WORD_COUNT,
-                            lowercase=cfg.LOWERCASE, replace_digits=cfg.REPLACE_DIGITS)
-        corpus.gen_data(cfg.PER)
+        corpus = WLPDataset(min_wcount=cfg.MIN_WORD_COUNT,
+                            lowercase=cfg.LOWERCASE, replace_digits=cfg.REPLACE_DIGITS, gen_ent_feat=True)
+        train_p = set([os.path.splitext(os.path.basename(f))[0] for f in glob.glob(cfg.TRAIN_ARTICLES_PATH + "/*")])
+        dev_p = set([os.path.splitext(os.path.basename(f))[0] for f in glob.glob(cfg.DEV_ARTICLES_PATH + "/*")])
+        test_p = set([os.path.splitext(os.path.basename(f))[0] for f in glob.glob(cfg.TEST_ARTICLES_PATH + "/*")])
+
+        corpus.gen_data(train_p, dev_p, test_p)
 
         if savefile:
             print("Saving corpus and embedding matrix ...")
@@ -202,7 +209,7 @@ def multi_batchify(samples):
     samples = sorted(samples, key=lambda s: len(s.SENT), reverse=True)
 
     SENT, X, Y, P = zip(*[(sample.SENT, sample.X, sample.Y, sample.P)
-                                  for sample in samples])
+                          for sample in samples])
 
     return SENT, X, Y, P
 
@@ -268,7 +275,7 @@ def single_run(corpus, index, title, overwrite, only_test=False):
 
 def main(nrun=1):
     for run in range(nrun):
-        dataset = dataset_prep(loadfile=cfg.DB)
+        dataset = dataset_prep()
         cfg.CATEGORIES = len(dataset.tag_idx.keys()) + 2  # +2 for start and end tags of a seq
         dataset.tag_idx['<s>'] = len(dataset.tag_idx.keys())
         dataset.tag_idx['</s>'] = len(dataset.tag_idx.keys())

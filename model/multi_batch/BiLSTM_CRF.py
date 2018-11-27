@@ -63,7 +63,8 @@ class BiLSTM_CRF(nn.Module):
                 next_tag_var = forward_var + trans_score + emit_score
                 # The forward variable for this tag is log-sum-exp of all the
                 # scores.
-                alphas_t.append(self.log_sum_exp(next_tag_var))
+                alphas_t.append(self.log_sum_exp(next_tag_var).view(1))
+
             forward_var = torch.cat(alphas_t).view(1, -1)
         terminal_var = forward_var + self.transitions[self.tag_idx[cfg.SENT_END]]
         alpha = self.log_sum_exp(terminal_var)
@@ -112,7 +113,7 @@ class BiLSTM_CRF(nn.Module):
                 next_tag_var = forward_var + self.transitions[next_tag]
                 best_tag_id = self.argmax(next_tag_var)
                 bptrs_t.append(best_tag_id)
-                viterbivars_t.append(next_tag_var[0][best_tag_id])
+                viterbivars_t.append(next_tag_var[0][best_tag_id].view(1))
             # Now add in the emission scores, and assign forward_var to the set
             # of viterbi variables we just computed
             forward_var = (torch.cat(viterbivars_t) + feat).view(1, -1)

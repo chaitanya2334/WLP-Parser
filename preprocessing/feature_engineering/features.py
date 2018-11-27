@@ -268,8 +268,8 @@ class LemmatizerFeatures(object):
         sys.stdout.flush()
         # catch stupid problems with stanford POS tagger and unicode characters
         if len(pos_tags) == len(window.tokens):
-            # _ is the word
-            for token, (_, pos_tag) in zip(window.tokens, pos_tags):
+            # pos_tag = (word, pos, chunk)
+            for token, (_, pos_tag, _) in zip(window.tokens, pos_tags):
                 if self.token_to_rank(token) != "#":
                     the_word = self.wordnet_lemmatizer.lemmatize(token.word, pos=self.convert_tag(pos_tag))
                     synonyms = wordnet.synsets(the_word, pos=self.convert_tag(pos_tag))
@@ -280,7 +280,7 @@ class LemmatizerFeatures(object):
                 result.append(["lm={0}".format("".join(lemmas))])
         else:
             orig_str = "|".join([token.word for token in window.tokens])
-            pos_str = "|".join([word for word, _ in pos_tags])
+            pos_str = "|".join([word for word, _, _ in pos_tags])
             print("[Info] In Protocol {0}: Stanford POS tagger got sequence of length {1}, returned "
                   "POS-sequence of length {2}. This sometimes happens with special unicode "
                   "characters. Returning empty list instead.".format(window.pno, len(window.tokens), len(pos_tags)))
@@ -859,7 +859,7 @@ class POSTagFeature(object):
                 result.append(["pos={0}".format(pos_tag[1])])
         else:
             orig_str = "|".join([token.word for token in window.tokens])
-            pos_str = "|".join([word for word, _ in pos_tags])
+            pos_str = "|".join([word for word, _, _ in pos_tags])
             print("[Info] Stanford POS tagger got sequence of length %d, returned " \
                   "POS-sequence of length %d. This sometimes happens with special unicode " \
                   "characters. Returning empty list instead." % (len(window.tokens), len(pos_tags)))

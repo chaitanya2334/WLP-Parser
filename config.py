@@ -4,7 +4,7 @@ import os
 # directory of the config file
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
 
-ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "simple_input")
+ARTICLES_FOLDERPATH = os.path.join(CURRENT_DIR, "WLP-Dataset")
 
 TRAIN_ARTICLES_PATH = os.path.join(CURRENT_DIR, "WLP-Dataset/train")
 
