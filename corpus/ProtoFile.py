@@ -19,6 +19,8 @@ import itertools as it
 from preprocessing.feature_engineering.pos import PosTagger
 import html
 
+from preprocessing.utils import get_stanford_dep_parser
+
 logger = logging.getLogger(__name__)
 
 Tag = namedtuple("Tag", "tag_id, tag_name, start, end, words")
@@ -123,19 +125,17 @@ class ProtoFile:
 
         return parse_trees
 
-    def __gen_dep(self):
+    @get_stanford_dep_parser(path_to_jar=feat_cfg.STANFORD_PARSER_JAR,
+                             path_to_models_jar=feat_cfg.STANFORD_PARSER_MODEL_JAR)
+    def __gen_dep(self, dep_parser):
         d_cache = os.path.join(cfg.DEP_PICKLE_DIR, self.protocol_name + '.p')
         try:
             # loading saved dep parsers
             conll_deps = pickle.load(open(d_cache, 'rb'))
 
         except (pickle.UnpicklingError, EOFError, FileNotFoundError):
-            dep = StanfordDependencyParser(path_to_jar=feat_cfg.STANFORD_PARSER_JAR,
-                                           path_to_models_jar=feat_cfg.STANFORD_PARSER_MODEL_JAR,
-                                           java_options="-mx3000m")
-
             # adding pos data to dep parser speeds up dep generation even further
-            dep_graphs = [sent_dep for sent_dep in dep.tagged_parse_sents(self.pos_tags)]
+            dep_graphs = [sent_dep for sent_dep in dep_parser.tagged_parse_sents(self.pos_tags)]
 
             # save dependency graph in conll format
             conll_deps = [next(deps).to_conll(10) for deps in dep_graphs]

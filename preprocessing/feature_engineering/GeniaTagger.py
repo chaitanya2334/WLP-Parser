@@ -1,4 +1,5 @@
 import io
+import math
 import os
 import subprocess
 import tarfile
@@ -34,19 +35,20 @@ class GeniaTagger(object):
         if not os.path.isfile(self._path_to_tagger):
             self.dl_and_make()
 
-        self._tagger = subprocess.Popen('./' + os.path.basename(path_to_tagger),
-                                        cwd=self._dir_to_tagger,
-                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-
     def dl_and_make(self):
         print("Downloading genia tagger ...")
         r = requests.get("http://www.nactem.ac.uk/tsujii/GENIA/tagger/geniatagger-3.0.2.tar.gz", stream=True)
-        total_length = int(r.headers.get('content-length'))
+        total_size = int(r.headers.get('Content-length'))
+        block_size = 1024
+        pbar = tqdm(r.iter_content(chunk_size=block_size),
+                    total=total_size, unit_divisor=1024,
+                    unit='B', unit_scale=True)
+
         with io.BytesIO() as buf:
-            for chunk in tqdm(r.iter_content(chunk_size=1024), total=(total_length / 1024) + 1):
-                if chunk:
-                    buf.write(chunk)
-                    buf.flush()
+            for chunk in pbar:
+                buf.write(chunk)
+                buf.flush()
+                pbar.update(block_size)
 
             buf.seek(0, 0)
             z = tarfile.open(fileobj=buf)
@@ -70,7 +72,9 @@ class GeniaTagger(object):
 
         in_file = open("temp.txt", "r", encoding="utf-8")
         out_file = open("out.txt", "w", encoding="utf-8")
-        self.tagger = subprocess.call(self._path_to_tagger, cwd=self._dir_to_tagger, stdin=in_file, stdout=out_file)
+        subprocess.call(self._path_to_tagger, cwd=self._dir_to_tagger,
+                        stdin=in_file, stdout=out_file,
+                        stderr=subprocess.PIPE)
         ret_sents = []
         sent = []
 
